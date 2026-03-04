@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "updated_at": "2026-03-03T00:00:00Z",
+  "tiers": {
+    "1": {
+      "name": "Tier1",
+      "trust_score": 0.95,
+      "rules": [
+        "official_or_regulatory",
+        "can_accept_without_cross_validation"
+      ]
+    },
+    "2": {
+      "name": "Tier2",
+      "trust_score": 0.75,
+      "rules": [
+        "professional_or_mainstream",
+        "requires_cross_validation"
+      ]
+    },
+    "3": {
+      "name": "Tier3",
+      "trust_score": 0.35,
+      "rules": [
+        "ugc_or_social",
+        "clue_only_requires_upstream_trace"
+      ]
+    }
+  },
+  "entries": [
+    { "pattern": "gov.cn", "match": "suffix", "tier": 1, "rules": ["official_domain"] },
+    { "pattern": "news.cn", "match": "suffix", "tier": 1, "rules": ["official_media"] },
+    { "pattern": "xinhuanet.com", "match": "suffix", "tier": 1, "rules": ["official_media"] },
+    { "pattern": "people.com.cn", "match": "suffix", "tier": 1, "rules": ["official_media"] },
+    { "pattern": "cctv.com", "match": "suffix", "tier": 1, "rules": ["official_media"] },
+    { "pattern": "who.int", "match": "suffix", "tier": 1, "rules": ["international_org"] },
+    { "pattern": "un.org", "match": "suffix", "tier": 1, "rules": ["international_org"] },
+    { "pattern": "reuters.com", "match": "suffix", "tier": 1, "rules": ["international_media"] },
+    { "pattern": "bbc.co.uk", "match": "suffix", "tier": 1, "rules": ["international_media"] },
+    { "pattern": "bbc.com", "match": "suffix", "tier": 1, "rules": ["international_media"] },
+
+    { "pattern": "thepaper.cn", "match": "suffix", "tier": 2, "rules": ["mainstream_media"] },
+    { "pattern": "caixin.com", "match": "suffix", "tier": 2, "rules": ["professional_media"] },
+    { "pattern": "apnews.com", "match": "suffix", "tier": 2, "rules": ["international_media"] },
+    { "pattern": "theguardian.com", "match": "suffix", "tier": 2, "rules": ["international_media"] },
+    { "pattern": "chinadaily.com.cn", "match": "suffix", "tier": 2, "rules": ["mainstream_media"] },
+
+    { "pattern": "weibo.com", "match": "suffix", "tier": 3, "rules": ["social_platform"] },
+    { "pattern": "x.com", "match": "suffix", "tier": 3, "rules": ["social_platform"] },
+    { "pattern": "twitter.com", "match": "suffix", "tier": 3, "rules": ["social_platform"] },
+    { "pattern": "xiaohongshu.com", "match": "suffix", "tier": 3, "rules": ["social_platform"] },
+    { "pattern": "zhihu.com", "match": "suffix", "tier": 3, "rules": ["ugc_platform"] },
+    { "pattern": "bilibili.com", "match": "suffix", "tier": 3, "rules": ["ugc_platform"] },
+    { "pattern": "douyin.com", "match": "suffix", "tier": 3, "rules": ["ugc_platform"] }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "generated_at": "2026-03-03T15:02:51.205940",
+  "input_report": "docs/source-health-report-evidence.json",
+  "min_success": 0.34,
+  "require_items": true,
+  "seed": [
+    "rss_pool",
+    "weibo",
+    "zhihu",
+    "xinhua",
+    "peoples_daily",
+    "china_gov",
+    "samr",
+    "csrc",
+    "nhc",
+    "who",
+    "un_news",
+    "reuters",
+    "bbc",
+    "guardian",
+    "ap_news",
+    "the_paper",
+    "caixin",
+    "sec"
+  ],
+  "trusted_platforms": [],
+  "env_value": ""
+}

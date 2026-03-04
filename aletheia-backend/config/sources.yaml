@@ -1,0 +1,325 @@
+# sources.yaml
+version: 1
+defaults:
+  enabled: true
+  type: rss                  # rss | sitemap | html | playwright (这里先以 rss 为主)
+  fetch_interval_seconds: 600 # 10 min
+  priority: 5                # 1最高，10最低
+  per_domain:
+    max_concurrency: 1
+    min_delay_ms: 1200       # 请求间隔下限（同域）
+    jitter_ms: 800           # 抖动
+  retry:
+    max_retries: 3
+    base_backoff_seconds: 10
+    max_backoff_seconds: 900
+    retry_on_status: [408, 429, 500, 502, 503, 504]
+  stop_conditions:
+    pause_after_consecutive_failures: 12  # 连续失败就暂停该源（无人值守自我保护）
+  content_policy:
+    fetch_full_article: false  # MVP：先只用 RSS description 快摘要
+    max_items_per_fetch: 50
+    store_fields: [title, link, pubDate, description, source_id, category]
+
+groups:
+  # ========== 央媒 / 通讯社 / 官方 ==========
+  - group_id: cn_official
+    name: 央媒与官方信息
+    sources:
+      - source_id: people_all
+        name: 人民网-要闻快讯(全部)
+        category: 时政/综合
+        url: http://www.people.com.cn/rss/ywkx.xml
+        priority: 2
+
+      - source_id: people_politics
+        name: 人民网-时政
+        category: 时政
+        url: http://www.people.com.cn/rss/politics.xml
+        priority: 2
+
+      - source_id: people_society
+        name: 人民网-社会
+        category: 社会
+        url: http://www.people.com.cn/rss/society.xml
+        priority: 3
+
+      - source_id: people_legal
+        name: 人民网-法治
+        category: 法治
+        url: http://www.people.com.cn/rss/legal.xml
+        priority: 3
+
+      - source_id: people_world
+        name: 人民网-国际
+        category: 国际
+        url: http://www.people.com.cn/rss/world.xml
+        priority: 3
+
+      - source_id: people_military
+        name: 人民网-军事
+        category: 军事
+        url: http://www.people.com.cn/rss/military.xml
+        priority: 4
+
+      - source_id: people_hmt
+        name: 人民网-台港澳
+        category: 港澳台
+        url: http://www.people.com.cn/rss/haixia.xml
+        priority: 4
+
+      - source_id: chinanews_scroll
+        name: 中国新闻网-即时滚动
+        category: 综合/快讯
+        url: https://www.chinanews.com.cn/rss/scroll-news.xml
+        priority: 2
+
+      - source_id: chinanews_china
+        name: 中国新闻网-时政(国内)
+        category: 时政
+        url: https://www.chinanews.com.cn/rss/china.xml
+        priority: 2
+
+      - source_id: chinanews_world
+        name: 中国新闻网-国际
+        category: 国际
+        url: https://www.chinanews.com.cn/rss/world.xml
+        priority: 3
+
+      - source_id: chinanews_society
+        name: 中国新闻网-社会
+        category: 社会
+        url: https://www.chinanews.com.cn/rss/society.xml
+        priority: 3
+
+      # CCTV RSS（按分类）
+      - source_id: cctv_domestic
+        name: CCTV-国内
+        category: 时政/国内
+        url: http://www.cctv.com/program/rss/02/01/index.xml
+        priority: 3
+
+      - source_id: cctv_world
+        name: CCTV-国际
+        category: 国际
+        url: http://www.cctv.com/program/rss/02/02/index.xml
+        priority: 4
+
+      - source_id: cctv_sports
+        name: CCTV-体育
+        category: 体育
+        url: http://www.cctv.com/program/rss/02/03/index.xml
+        priority: 5
+
+      - source_id: cctv_finance
+        name: CCTV-财经
+        category: 财经
+        url: http://www.cctv.com/program/rss/02/04/index.xml
+        priority: 4
+
+      - source_id: cctv_science
+        name: CCTV-科教
+        category: 科教
+        url: http://www.cctv.com/program/rss/02/05/index.xml
+        priority: 6
+
+      - source_id: cctv_society
+        name: CCTV-社会
+        category: 社会
+        url: http://www.cctv.com/program/rss/02/06/index.xml
+        priority: 5
+
+      - source_id: cctv_ent
+        name: CCTV-文娱
+        category: 娱乐/文娱
+        url: http://www.cctv.com/program/rss/02/07/index.xml
+        priority: 7
+
+      # 官方政策 / 数据（如果你的网络环境偶发 403，建议保留但容错）
+      - source_id: gov_policy_latest
+        name: 国务院-政策最新
+        category: 政策
+        url: https://www.gov.cn/jsonTag/tp/rss.xml
+        priority: 1
+        fetch_interval_seconds: 1800
+
+      - source_id: stats_release
+        name: 国家统计局-最新发布
+        category: 数据/统计
+        url: https://www.stats.gov.cn/sj/zxfb/rss.xml
+        priority: 1
+        fetch_interval_seconds: 1800
+
+      - source_id: stats_interpret
+        name: 国家统计局-数据解读
+        category: 数据/解读
+        url: https://www.stats.gov.cn/sj/sjjd/rss.xml
+        priority: 2
+        fetch_interval_seconds: 1800
+
+  # ========== 门户“全覆盖”聚合（适合扩面，但要更保守限频） ==========
+  - group_id: cn_portals
+    name: 门户聚合（覆盖体育/娱乐/教育/房产/汽车/游戏/女性等）
+    defaults_override:
+      fetch_interval_seconds: 1200
+      priority: 7
+      per_domain:
+        max_concurrency: 1
+        min_delay_ms: 1800
+        jitter_ms: 1200
+    sources:
+      - source_id: sina_rss_root
+        name: 新浪RSS-总入口(频道聚合)
+        category: 聚合/全领域
+        url: https://rss.sina.com.cn/
+        # 注：这里是“入口页”，如果你们的 Ingestor 支持从页面抓 OPML/子RSS，
+        # 可把它当“目录源”；否则建议你们进一步手工固化子频道RSS到sources里。
+
+      - source_id: sohu_rss_root
+        name: 搜狐RSS-总入口
+        category: 聚合/全领域
+        url: https://rss.news.sohu.com/
+
+      - source_id: ifeng_news_rss_root
+        name: 凤凰资讯RSS-总入口
+        category: 聚合/资讯
+        url: https://news.ifeng.com/rss/
+
+      - source_id: ifeng_auto_rss_root
+        name: 凤凰汽车RSS-总入口
+        category: 聚合/汽车
+        url: https://auto.ifeng.com/rss/
+
+      - source_id: baidu_news_rss_center
+        name: 百度新闻RSS-订阅中心(分类/关键词/地区)
+        category: 聚合/检索
+        url: https://www.baidu.com/search/rss.html
+
+  # ========== 财经 / 商业 / 创投 / 科技 ==========
+  - group_id: cn_business_tech
+    name: 财经与科技产业
+    sources:
+      - source_id: jiemian_rss
+        name: 界面新闻-RSS
+        category: 财经/商业
+        url: https://a.jiemian.com/index.php?a=rss&m=article
+        priority: 4
+        fetch_interval_seconds: 900
+
+      - source_id: kr36_feed
+        name: 36氪-综合
+        category: 创投/科技
+        url: https://36kr.com/feed
+        priority: 4
+        fetch_interval_seconds: 600
+
+      - source_id: kr36_article
+        name: 36氪-文章
+        category: 创投/科技
+        url: https://36kr.com/feed-article
+        priority: 5
+        fetch_interval_seconds: 900
+
+      - source_id: kr36_newsflash
+        name: 36氪-快讯
+        category: 创投/快讯
+        url: https://36kr.com/feed-newsflash
+        priority: 5
+        fetch_interval_seconds: 600
+
+      - source_id: tmtpost_feed
+        name: 钛媒体-RSS
+        category: 科技/商业
+        url: https://www.tmtpost.com/feed
+        priority: 6
+        fetch_interval_seconds: 900
+
+      - source_id: ifanr_feed
+        name: 爱范儿-RSS
+        category: 科技/产品
+        url: http://ifanr.com/feed
+        priority: 6
+        fetch_interval_seconds: 1200
+
+      - source_id: ithome_rss
+        name: IT之家-RSS
+        category: 科技/数码
+        url: http://www.ithome.com/rss/
+        priority: 6
+        fetch_interval_seconds: 900
+
+  # ========== 汽车 / 出行 ==========
+  - group_id: cn_auto
+    name: 汽车与出行
+    sources:
+      - source_id: gasgoo_rss
+        name: 盖世汽车-RSS中心
+        category: 汽车/产业链
+        url: https://auto.gasgoo.com/rss/rss.html
+        priority: 7
+        fetch_interval_seconds: 1800
+
+  # ========== 健康 / 医疗 ==========
+  - group_id: cn_health
+    name: 健康与医疗
+    sources:
+      - source_id: health39_rss_root
+        name: 39健康网-RSS中心
+        category: 健康/全领域
+        url: https://rss.39.net/
+        priority: 7
+        fetch_interval_seconds: 1800
+
+  # ========== 科研 / 科普 / 学术 ==========
+  - group_id: cn_science
+    name: 科研与科普
+    sources:
+      - source_id: sciencenet_rss_center
+        name: 科学网-RSS中心(学科/博客/论文/招聘等)
+        category: 科研/科普
+        url: https://www.sciencenet.cn/RSS.aspx
+        priority: 7
+        fetch_interval_seconds: 3600
+
+      - source_id: arxiv_rss_help
+        name: arXiv-RSS说明(按学科订阅)
+        category: 论文/预印本
+        url: https://info.arxiv.org/help/rss.html
+        priority: 9
+        fetch_interval_seconds: 86400
+        content_policy:
+          fetch_full_article: false
+
+      - source_id: biorxiv_alerts
+        name: bioRxiv-Alerts & RSS/Atom
+        category: 论文/生物医药
+        url: https://www.biorxiv.org/alertsrss
+        priority: 9
+        fetch_interval_seconds: 86400
+        content_policy:
+          fetch_full_article: false
+
+  # ========== 开发者 / 技术社区 ==========
+  - group_id: cn_dev
+    name: 开发者与技术社区
+    sources:
+      - source_id: v2ex_all
+        name: V2EX-全站新主题
+        category: 开发者/社区
+        url: https://www.v2ex.com/index.xml
+        priority: 8
+        fetch_interval_seconds: 600
+
+      - source_id: v2ex_tab_tech
+        name: V2EX-Tab(tech)
+        category: 开发者/技术
+        url: https://www.v2ex.com/feed/tab/tech.xml
+        priority: 8
+        fetch_interval_seconds: 900
+
+      - source_id: ruanyifeng_atom
+        name: 阮一峰-博客Atom
+        category: 开发者/技术
+        url: http://www.ruanyifeng.com/blog/atom.xml
+        priority: 9
+        fetch_interval_seconds: 3600

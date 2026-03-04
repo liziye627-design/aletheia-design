@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-03-03T14:34:23.294943",
+  "keyword": "苏炳添 退役",
+  "rows": [
+    {
+      "platform": "rss_pool",
+      "status": "fallback",
+      "reason": "RSS_EMERGENCY_FALLBACK",
+      "items": 4,
+      "elapsed_ms": 29064
+    },
+    {
+      "platform": "weibo",
+      "status": "fallback",
+      "reason": "FALLBACK_EMPTY",
+      "items": 0,
+      "elapsed_ms": 29064
+    },
+    {
+      "platform": "zhihu",
+      "status": "fallback",
+      "reason": "FALLBACK_EMPTY",
+      "items": 0,
+      "elapsed_ms": 28695
+    },
+    {
+      "platform": "xinhua",
+      "status": "fallback",
+      "reason": "FALLBACK_EMPTY",
+      "items": 0,
+      "elapsed_ms": 28690
+    },
+    {
+      "platform": "peoples_daily",
+      "status": "fallback",
+      "reason": "WEB_FALLBACK",
+      "items": 2,
+      "elapsed_ms": 20197
+    },
+    {
+      "platform": "china_gov",
+      "status": null,
+      "reason": null,
+      "items": 0,
+      "elapsed_ms": 0
+    },
+    {
+      "platform": "samr",
+      "status": "fallback",
+      "reason": "FALLBACK_EMPTY",
+      "items": 0,
+      "elapsed_ms": 25452
+    },
+    {
+      "platform": "csrc",
+      "status": "fallback",
+      "reason": "FALLBACK_EMPTY",
+      "items": 0,
+      "elapsed_ms": 24126
+    },
+    {
+      "platform": "nhc",
+      "status": "fallback",
+      "reason": "FALLBACK_EMPTY",
+      "items": 0,
+      "elapsed_ms": 24181
+    }
+  ]
+}

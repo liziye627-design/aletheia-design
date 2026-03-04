@@ -308,12 +308,12 @@ class Settings(BaseSettings):
     FACTCHECK_TIMEOUT_SEC: int = 6
     GOOGLE_FACTCHECK_API_KEY: Optional[str] = None
     GOOGLE_FACTCHECK_API_URL: str = "https://factchecktools.googleapis.com/v1alpha1/claims:search"
-    MEDIACRAWLER_ENABLED: bool = False
-    MEDIACRAWLER_NONCOMMERCIAL_ACK: bool = False
-    MEDIACRAWLER_BASE_URL: str = "http://127.0.0.1:8080"
+    MEDIACRAWLER_ENABLED: bool = True
+    MEDIACRAWLER_NONCOMMERCIAL_ACK: bool = True
+    MEDIACRAWLER_BASE_URL: str = "http://127.0.0.1:18080"
     MEDIACRAWLER_AUTO_START: bool = True
     MEDIACRAWLER_HOME: str = "../MediaCrawler"
-    MEDIACRAWLER_START_COMMAND: str = "uv run uvicorn api.main:app --host 127.0.0.1 --port 8080"
+    MEDIACRAWLER_START_COMMAND: str = "uv run uvicorn api.main:app --host 127.0.0.1 --port 18080"
     MEDIACRAWLER_HEADLESS: bool = False
     MEDIACRAWLER_STARTUP_TIMEOUT_SEC: int = 45
     MEDIACRAWLER_REQUEST_TIMEOUT_SEC: int = 15

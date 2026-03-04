@@ -1,0 +1,325 @@
+# Platform Capability Matrix
+# 平台能力矩阵 - 单一真相配置
+# Version: v1.1
+# Updated: 2026-03-04
+# Based on Phase 1 diagnosis results
+
+platforms:
+  # ==================== 稳定平台 (Tier 1) ====================
+  xinhua:
+    tier: major_media
+    lang: zh
+    discovery_mode: rss
+    search_mode: native
+    content_mode: direct_article
+    trusted_domains:
+      - xinhuanet.com
+      - news.cn
+      - xinhua.net
+    timeout_ms: 15000
+    retry_policy:
+      max_retries: 3
+      backoff_base: 1.0
+    enabled_in_evidence_pool: true
+    status: stable
+    notes: "新华网RSS可用，但部分端点过期"
+    rss_urls:
+      - "http://www.xinhuanet.com/world/news_world.xml"
+      - "http://www.xinhuanet.com/local/news_local.xml"
+    issues:
+      - "部分RSS端点返回404"
+      - "需要定期验证RSS可用性"
+
+  the_paper:
+    tier: major_media
+    lang: zh
+    discovery_mode: api
+    search_mode: native
+    content_mode: direct_article
+    trusted_domains:
+      - thepaper.cn
+      - thepaper.com.cn
+    timeout_ms: 15000
+    retry_policy:
+      max_retries: 3
+      backoff_base: 1.0
+    enabled_in_evidence_pool: true
+    status: stable
+    notes: "澎湃新闻官方API可用，支持热搜和热门新闻"
+    api_endpoints:
+      - "https://cache.thepaper.cn/contentapi/wwwIndex/rightSidebar"
+    crawler_type: "hot_news_api"
+
+  peoples_daily:
+    tier: major_media
+    lang: zh
+    discovery_mode: rss
+    search_mode: native
+    content_mode: direct_article
+    trusted_domains:
+      - people.com.cn
+      - peoplesdaily.com.cn
+    timeout_ms: 15000
+    retry_policy:
+      max_retries: 3
+      backoff_base: 1.0
+    enabled_in_evidence_pool: true
+    status: stable
+    notes: "人民网RSS稳定可用，每日更新"
+    rss_urls:
+      - "http://www.people.com.cn/rss/politics.xml"
+      - "http://www.people.com.cn/rss/world.xml"
+      - "http://www.people.com.cn/rss/ywkx.xml"
+      - "http://www.people.com.cn/rss/legal.xml"
+      - "http://www.people.com.cn/rss/society.xml"
+
+  chinanews:
+    tier: major_media
+    lang: zh
+    discovery_mode: rss
+    search_mode: native
+    content_mode: direct_article
+    trusted_domains:
+      - chinanews.com
+      - chinanews.com.cn
+    timeout_ms: 15000
+    retry_policy:
+      max_retries: 3
+      backoff_base: 1.0
+    enabled_in_evidence_pool: true
+    status: stable
+    notes: "中新网RSS稳定可用"
+    rss_urls:
+      - "https://www.chinanews.com.cn/rss/scroll-news.xml"
+      - "https://www.chinanews.com.cn/rss/china.xml"
+      - "https://www.chinanews.com.cn/rss/world.xml"
+
+  # ==================== 需要修复的平台 ====================
+  cctv:
+    tier: major_media
+    lang: zh
+    discovery_mode: rss
+    search_mode: none
+    content_mode: direct_article
+    trusted_domains:
+      - cctv.com
+      - cntv.cn
+      - cctv.cn
+    timeout_ms: 15000
+    retry_policy:
+      max_retries: 3
+      backoff_base: 1.5
+    enabled_in_evidence_pool: false
+    status: degraded
+    issues:
+      - "RSS内容过期(2007年数据)"
+      - "编码问题(GBK乱码)"
+      - "需要寻找新RSS端点或使用API"
+    rss_urls:
+      - "http://www.cctv.com/program/rss/02/01/index.xml"
+    notes: "央视新闻RSS不可用，需要替代方案"
+
+  caixin:
+    tier: major_media
+    lang: zh
+    discovery_mode: api
+    search_mode: native
+    content_mode: direct_article
+    trusted_domains:
+      - caixin.com
+      - caixin.com.cn
+    timeout_ms: 15000
+    retry_policy:
+      max_retries: 3
+      backoff_base: 1.5
+    enabled_in_evidence_pool: false
+    status: degraded
+    issues:
+      - "RSS端点不可用"
+      - "部分内容需要付费"
+    notes: "财新网需要API或爬虫方案"
+
+  # ==================== 官方组 (需要修复) ====================
+  samr:
+    tier: official
+    lang: zh
+    discovery_mode: list_page
+    search_mode: none
+    content_mode: direct_article
+    trusted_domains:
+      - samr.gov.cn
+    timeout_ms: 15000
+    retry_policy:
+      max_retries: 2
+      backoff_base: 2.0
+    enabled_in_evidence_pool: false
+    status: degraded
+    issues:
+      - "无站内搜索"
+      - "需要增量抓取"
+    list_pages:
+      - "https://www.samr.gov.cn/xwzx/"
+      - "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/"
+
+  csrc:
+    tier: official
+    lang: zh
+    discovery_mode: list_page
+    search_mode: local_index_only
+    content_mode: direct_article
+    trusted_domains:
+      - csrc.gov.cn
+    timeout_ms: 30000
+    retry_policy:
+      max_retries: 2
+      backoff_base: 2.0
+    enabled_in_evidence_pool: true
+    status: stable
+    notes: "证监会列表页可用，支持正文提取"
+    list_pages:
+      - "/csrc_new/"
+      - "/csrc_new/flk/"
+    crawler_type: "official_site"
+
+  nhc:
+    tier: official
+    lang: zh
+    discovery_mode: list_page
+    search_mode: none
+    content_mode: direct_article
+    trusted_domains:
+      - nhc.gov.cn
+    timeout_ms: 15000
+    retry_policy:
+      max_retries: 2
+      backoff_base: 2.0
+    enabled_in_evidence_pool: false
+    status: degraded
+    issues:
+      - "无站内搜索"
+      - "需要增量抓取"
+
+  mem:
+    tier: official
+    lang: zh
+    discovery_mode: list_page
+    search_mode: local_index_only
+    content_mode: direct_article
+    trusted_domains:
+      - mem.gov.cn
+    timeout_ms: 30000
+    retry_policy:
+      max_retries: 2
+      backoff_base: 2.0
+    enabled_in_evidence_pool: true
+    status: stable
+    notes: "应急管理部列表页可用，支持正文提取"
+    list_pages:
+      - "/xw/"
+    crawler_type: "official_site"
+
+  mps:
+    tier: official
+    lang: zh
+    discovery_mode: list_page
+    search_mode: none
+    content_mode: direct_article
+    trusted_domains:
+      - mps.gov.cn
+    timeout_ms: 15000
+    retry_policy:
+      max_retries: 2
+      backoff_base: 2.0
+    enabled_in_evidence_pool: false
+    status: degraded
+    issues:
+      - "无站内搜索"
+      - "需要增量抓取"
+
+  # ==================== RSS池 (需要重建) ====================
+  rss_pool:
+    tier: background
+    lang: mixed
+    discovery_mode: rss
+    search_mode: local_index_only
+    content_mode: direct_article
+    trusted_domains: []
+    timeout_ms: 10000
+    retry_policy:
+      max_retries: 2
+      backoff_base: 1.0
+    enabled_in_evidence_pool: false
+    status: observe
+    issues:
+      - "延迟过高"
+      - "空结果率高"
+    config:
+      RSS_POOL_SEARCH_SKIP_NETWORK_IF_LOCAL_ENOUGH: true
+      RSS_POOL_LOCAL_INDEX_LOOKBACK_DAYS: 30
+      RSS_POOL_LOCAL_INDEX_MAX_CANDIDATES: 120
+
+# ==================== 状态定义 ====================
+status_definitions:
+  stable:
+    description: "RSS/API稳定可用，内容实时更新"
+    action: "保持配置，加入证据池"
+  observe:
+    description: "有数据但需要验证"
+    action: "监控但不加入证据池"
+  degraded:
+    description: "数据源不可用或过期"
+    action: "寻找替代方案"
+  disabled:
+    description: "连续多轮无证据"
+    action: "禁用平台"
+
+# ==================== 质量阈值 ====================
+quality_thresholds:
+  evidence_pool:
+    min_items: 3
+    min_keyword_hit_rate: 0.8
+    min_entity_hit_rate: 0.8
+    min_trusted_hit_rate: 0.9
+  observe_pool:
+    min_items: 1
+    min_keyword_hit_rate: 0.5
+    min_entity_hit_rate: 0.5
+
+# ==================== Phase 1 诊断结果 ====================
+phase1_diagnosis:
+  timestamp: "2026-03-04"
+  results:
+    peoples_daily:
+      rss_working: 5
+      rss_total: 5
+      items_per_feed: 100
+      status: stable
+    chinanews:
+      rss_working: 3
+      rss_total: 4
+      items_per_feed: 30
+      status: stable
+    cctv:
+      rss_working: 1
+      rss_total: 3
+      issues:
+        - "内容过期(2007年)"
+        - "编码乱码"
+      status: degraded
+    caixin:
+      rss_working: 0
+      rss_total: 2
+      status: degraded
+    xinhua:
+      rss_working: 1
+      rss_total: 2
+      issues:
+        - "部分端点404"
+        - "内容可能过期"
+      status: observe
+    the_paper:
+      rss_working: 0
+      rss_total: 2
+      issues:
+        - "RSS返回HTML"
+      status: degraded
