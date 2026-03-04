@@ -1,0 +1,845 @@
+import { AnimatePresence, motion } from 'framer-motion'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  aggregateMultiplatform,
+  analyzeCredibility,
+  analyzeEnhanced,
+  exportReport,
+  generateReport,
+  listReports,
+  multiAgentAnalyze,
+  playwrightRenderedExtract,
+  searchMultiplatform,
+  type AnalyzeResponse,
+  type CrossPlatformCredibilityData,
+  type ExportFormat,
+  type MultiAgentAnalyzeData,
+  type MultiplatformAggregateData,
+  type MultiplatformSearchResponse,
+  type PlaywrightRenderedExtractData,
+  type ReasoningStep,
+  type ReportResponse,
+} from './api'
+import { AnalysisResult } from './components/Report/AnalysisResult'
+import { SearchScreen } from './components/Search/SearchScreen'
+import { VerificationForm, type VerificationRunRequest } from './components/Verify/VerificationForm'
+import { Card } from './components/common'
+import type { FeedEvent, StreamedReasoningStep, VerificationRunState } from './types/runtime'
+
+type TabId = 'verify' | 'report' | 'search' | 'evidence'
+
+const DEFAULT_PLATFORMS = ['weibo', 'xinhua', 'news', 'xiaohongshu', 'zhihu']
+const DEFAULT_RENDER_SCHEMA: Record<string, Record<string, unknown>> = {
+  title: { selector: 'h1', mode: 'text' },
+  description: { selector: 'meta[name=\"description\"]', mode: 'attr', attr: 'content' },
+  top_links: { selector: 'a', mode: 'attr', attr: 'href', many: true },
+}
+
+const STAGE_LABEL_MAP: Record<string, string> = {
+  preprocessing: '预处理',
+  physical_check: '物理校验',
+  logical_check: '逻辑校验',
+  source_analysis: '信源分析',
+  cross_validation: '交叉验证',
+  anomaly_detection: '异常检测',
+  evidence_synthesis: '证据综合',
+  self_reflection: '自我反思',
+}
+
+const TAB_ITEMS: Array<{ id: TabId; label: string; icon: string }> = [
+  { id: 'verify', label: '急救核验', icon: '🩺' },
+  { id: 'report', label: '证据报告', icon: '📡' },
+  { id: 'search', label: '信息流', icon: '📰' },
+  { id: 'evidence', label: '证据拓扑', icon: '🕸️' },
+]
+
+function delay(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
+function toReadableStage(stage: string) {
+  return STAGE_LABEL_MAP[stage] || stage
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
+
+function extractKeywordFromClaim(claim: string): string {
+  const compact = claim.replace(/\s+/g, ' ').trim()
+  if (!compact) return ''
+  const sentence = compact.split(/[。！？.!?]/)[0]?.trim() || compact
+  if (sentence.length <= 24) return sentence
+  return sentence.slice(0, 24)
+}
+
+function buildInitialStreamSteps(steps: ReasoningStep[]): StreamedReasoningStep[] {
+  return steps.map((step, index) => ({
+    ...step,
+    index,
+    status: 'pending',
+    streamedReasoning: '',
+    streamedConclusion: '',
+  }))
+}
+
+function takeSourcesFromSearch(search?: MultiplatformSearchResponse): Array<Record<string, unknown>> {
+  if (!search?.data) return []
+  const sources: Array<Record<string, unknown>> = []
+  Object.entries(search.data).forEach(([platform, posts]) => {
+    posts.slice(0, 4).forEach((raw, index) => {
+      const item = raw as Record<string, unknown>
+      const content =
+        (typeof item.content === 'string' && item.content) ||
+        (typeof item.text === 'string' && item.text) ||
+        (typeof item.title === 'string' && item.title) ||
+        ''
+      const url =
+        (typeof item.url === 'string' && item.url) ||
+        (typeof item.link === 'string' && item.link) ||
+        undefined
+      sources.push({
+        id: `${platform}-${index}`,
+        platform,
+        content,
+        url,
+      })
+    })
+  })
+  return sources
+}
+
+function buildNarrativeText(params: {
+  claim: string
+  keyword: string
+  analysis?: AnalyzeResponse
+  search?: MultiplatformSearchResponse
+  aggregate?: MultiplatformAggregateData
+  credibility?: CrossPlatformCredibilityData
+  multiAgent?: MultiAgentAnalyzeData
+  renderedExtract?: PlaywrightRenderedExtractData
+}): string {
+  const { claim, keyword, analysis, search, aggregate, credibility, multiAgent, renderedExtract } = params
+  const lines: string[] = []
+
+  lines.push(`# Aletheia 动态核验报告`)
+  lines.push('')
+  lines.push(`## 任务概况`)
+  lines.push(`- Claim: ${claim}`)
+  lines.push(`- Keyword: ${keyword}`)
+  lines.push(`- 生成时间: ${new Date().toLocaleString('zh-CN')}`)
+  lines.push('')
+
+  if (analysis) {
+    lines.push(`## 8步推理主结论`)
+    lines.push(`- 最终可信度: ${(analysis.reasoning_chain.final_score * 100).toFixed(1)}%`)
+    lines.push(`- 可信等级: ${analysis.reasoning_chain.final_level}`)
+    lines.push(`- 风险标记: ${(analysis.reasoning_chain.risk_flags || []).join('、') || '无'}`)
+    lines.push(`- 处理耗时: ${analysis.processing_time_ms} ms`)
+    lines.push('')
+    analysis.reasoning_chain.steps.forEach((step, index) => {
+      lines.push(`### Step ${index + 1} · ${toReadableStage(step.stage)}`)
+      lines.push(`推理: ${step.reasoning || '（空）'}`)
+      lines.push(`结论: ${step.conclusion || '（空）'}`)
+      lines.push(`置信度: ${(step.confidence * 100).toFixed(1)}%`)
+      lines.push(`分值影响: ${step.score_impact > 0 ? '+' : ''}${step.score_impact.toFixed(2)}`)
+      if (step.evidence.length > 0) lines.push(`证据: ${step.evidence.join('；')}`)
+      if (step.concerns.length > 0) lines.push(`疑点: ${step.concerns.join('；')}`)
+      lines.push('')
+    })
+  }
+
+  if (search) {
+    lines.push(`## 多平台搜索摘要`)
+    lines.push(`- 搜索命中: ${search.total_posts} 条`)
+    lines.push(`- 覆盖平台: ${search.platform_count} 个`)
+    Object.entries(search.data).forEach(([platform, posts]) => {
+      lines.push(`- ${platform}: ${posts.length} 条`)
+    })
+    lines.push('')
+  }
+
+  if (aggregate) {
+    lines.push(`## 聚合统计`)
+    lines.push(`- total_posts: ${aggregate.summary.total_posts}`)
+    lines.push(`- platform_count: ${aggregate.summary.platform_count}`)
+    Object.entries(aggregate.platform_stats).forEach(([platform, stat]) => {
+      lines.push(`- ${platform}: post_count=${stat.post_count}, avg_engagement=${Number(stat.avg_engagement ?? 0).toFixed(2)}`)
+    })
+    lines.push('')
+  }
+
+  if (credibility) {
+    lines.push(`## 跨平台可信度分析`)
+    lines.push(`- credibility_score: ${(credibility.credibility_score * 100).toFixed(1)}%`)
+    lines.push(`- credibility_level: ${credibility.credibility_level}`)
+    lines.push(`- risk_flags: ${credibility.risk_flags.join('、') || '无'}`)
+    if (credibility.anomalies.length > 0) {
+      lines.push(`- anomalies:`)
+      credibility.anomalies.forEach((anomaly) => {
+        lines.push(`  - [${anomaly.type}] ${anomaly.description}`)
+      })
+    }
+    if (credibility.evidence_chain.length > 0) {
+      lines.push(`- evidence_chain:`)
+      credibility.evidence_chain.forEach((item) => {
+        lines.push(`  - ${item.step}: ${item.description}`)
+      })
+    }
+    lines.push('')
+  }
+
+  if (multiAgent) {
+    lines.push(`## 多Agent推理综合`)
+    lines.push(`- overall_credibility: ${(multiAgent.overall_credibility * 100).toFixed(1)}%`)
+    lines.push(`- credibility_level: ${multiAgent.credibility_level}`)
+    lines.push(`- recommendation: ${multiAgent.recommendation}`)
+    if (multiAgent.consensus_points?.length) {
+      lines.push(`- consensus_points:`)
+      multiAgent.consensus_points.forEach((point) => lines.push(`  - ${point}`))
+    }
+    if (multiAgent.conflicts?.length) {
+      lines.push(`- conflicts:`)
+      multiAgent.conflicts.forEach((item) => lines.push(`  - ${item}`))
+    }
+    if (multiAgent.generated_article) {
+      lines.push('')
+      lines.push(`## 大模型生成正文`)
+      if (typeof multiAgent.generated_article === 'string') {
+        lines.push(multiAgent.generated_article)
+      } else {
+        lines.push(multiAgent.generated_article.body_markdown || '')
+      }
+    }
+    lines.push('')
+  }
+
+  if (renderedExtract) {
+    lines.push(`## 网页渲染抽取`)
+    lines.push(`- URL: ${renderedExtract.url}`)
+    lines.push(`- DOM稳定: ${renderedExtract.diagnostics.dom_stable ? '是' : '否'}`)
+    lines.push(`- 请求数量: ${renderedExtract.diagnostics.requests_seen}`)
+    lines.push(`- API JSON 命中: ${renderedExtract.api_responses.length}`)
+    const preview = renderedExtract.visible_text.slice(0, 280).replace(/\s+/g, ' ').trim()
+    if (preview) {
+      lines.push(`- 可见文本预览: ${preview}`)
+    }
+    lines.push('')
+  }
+
+  lines.push('## 结论建议')
+  lines.push('建议将该报告交由人工复核，重点审查异常传播簇、证据链缺口和跨平台冲突点。')
+  return lines.join('\n')
+}
+
+function downloadBase64File(result: {
+  content_base64: string
+  file_name: string
+  mime_type: string
+}) {
+  const binary = atob(result.content_base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  const blob = new Blob([bytes], { type: result.mime_type })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = result.file_name
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+function EvidenceTopology({ run }: { run: VerificationRunState | null }) {
+  if (!run) {
+    return <Card className="border-slate-700/80 bg-slate-900/70 text-slate-500">暂无任务上下文。</Card>
+  }
+
+  const chain = run.credibility?.evidence_chain ?? []
+  const anomalies = run.credibility?.anomalies ?? []
+  const consensus = run.multiAgent?.consensus_points ?? []
+
+  return (
+    <div className="space-y-4">
+      <Card className="border-slate-700/80 bg-slate-900/70">
+        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-300">证据链拓扑</h3>
+        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {chain.length === 0 && (
+            <p className="text-sm text-slate-500">后端暂未返回 evidence_chain。</p>
+          )}
+          {chain.map((item, index) => (
+            <div key={`${item.step}-${index}`} className="rounded-xl border border-slate-700 bg-slate-950/80 p-3">
+              <p className="text-xs font-semibold text-cyan-300">{item.step}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-200">{item.description}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {anomalies.length > 0 && (
+        <Card className="border-amber-500/40 bg-amber-500/10">
+          <h3 className="text-sm font-bold uppercase tracking-wide text-amber-200">异常关系节点</h3>
+          <div className="mt-3 space-y-2">
+            {anomalies.map((anomaly, index) => (
+              <div key={`${anomaly.type}-${index}`} className="rounded-lg border border-amber-400/40 bg-amber-900/20 px-3 py-2">
+                <p className="text-sm font-semibold text-amber-100">{anomaly.type}</p>
+                <p className="mt-1 text-xs text-amber-50">{anomaly.description}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {consensus.length > 0 && (
+        <Card className="border-emerald-500/40 bg-emerald-500/10">
+          <h3 className="text-sm font-bold uppercase tracking-wide text-emerald-200">多Agent共识节点</h3>
+          <ul className="mt-3 space-y-1 text-sm text-emerald-100">
+            {consensus.map((point) => (
+              <li key={point}>• {point}</li>
+            ))}
+          </ul>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+function App() {
+  const [activeTab, setActiveTab] = useState<TabId>('verify')
+  const [isRunning, setIsRunning] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [run, setRun] = useState<VerificationRunState | null>(null)
+  const [recentReports, setRecentReports] = useState<ReportResponse[]>([])
+
+  const activeRunRef = useRef<string | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+
+  const appendFeed = useCallback(
+    (runId: string, source: string, message: string, level: FeedEvent['level'] = 'info') => {
+      setRun((previous) => {
+        if (!previous || previous.runId !== runId) return previous
+        const nextEvent: FeedEvent = {
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          time: new Date().toISOString(),
+          source,
+          message,
+          level,
+        }
+        return {
+          ...previous,
+          feed: [nextEvent, ...previous.feed].slice(0, 240),
+        }
+      })
+    },
+    []
+  )
+
+  const updateStreamStep = useCallback(
+    (runId: string, index: number, updater: (prev: StreamedReasoningStep) => StreamedReasoningStep) => {
+      setRun((previous) => {
+        if (!previous || previous.runId !== runId) return previous
+        if (!previous.streamSteps[index]) return previous
+        const streamSteps = previous.streamSteps.map((step, stepIndex) =>
+          stepIndex === index ? updater(step) : step
+        )
+        return { ...previous, streamSteps }
+      })
+    },
+    []
+  )
+
+  const streamReasoningSteps = useCallback(
+    async (runId: string, steps: ReasoningStep[]) => {
+      const reasoningChunkSize = 18
+      const conclusionChunkSize = 24
+
+      for (let index = 0; index < steps.length; index += 1) {
+        if (activeRunRef.current !== runId) return
+
+        const step = steps[index]
+        appendFeed(runId, 'intel.enhanced', `Step ${index + 1} ${toReadableStage(step.stage)} 开始输出`, 'info')
+
+        setRun((previous) => {
+          if (!previous || previous.runId !== runId) return previous
+          return {
+            ...previous,
+            activeStepIndex: index,
+            streamSteps: previous.streamSteps.map((item, itemIndex) =>
+              itemIndex === index ? { ...item, status: 'streaming' } : item
+            ),
+          }
+        })
+
+        const reasoningText = step.reasoning || ''
+        for (let length = reasoningChunkSize; length <= reasoningText.length + reasoningChunkSize; length += reasoningChunkSize) {
+          if (activeRunRef.current !== runId) return
+          updateStreamStep(runId, index, (current) => ({
+            ...current,
+            streamedReasoning: reasoningText.slice(0, Math.min(reasoningText.length, length)),
+          }))
+          await delay(28)
+        }
+
+        const conclusionText = step.conclusion || ''
+        for (let length = conclusionChunkSize; length <= conclusionText.length + conclusionChunkSize; length += conclusionChunkSize) {
+          if (activeRunRef.current !== runId) return
+          updateStreamStep(runId, index, (current) => ({
+            ...current,
+            streamedConclusion: conclusionText.slice(0, Math.min(conclusionText.length, length)),
+          }))
+          await delay(24)
+        }
+
+        updateStreamStep(runId, index, (current) => ({ ...current, status: 'done' }))
+        appendFeed(
+          runId,
+          `step.${index + 1}`,
+          `结论完成：${conclusionText || '无结论文本'}（impact ${step.score_impact > 0 ? '+' : ''}${step.score_impact.toFixed(2)}）`,
+          step.score_impact < 0 ? 'warning' : 'success'
+        )
+
+        step.evidence.slice(0, 2).forEach((item) => {
+          appendFeed(runId, `step.${index + 1}.evidence`, item, 'success')
+        })
+        step.concerns.slice(0, 2).forEach((item) => {
+          appendFeed(runId, `step.${index + 1}.concern`, item, 'warning')
+        })
+
+        await delay(130)
+      }
+    },
+    [appendFeed, updateStreamStep]
+  )
+
+  useEffect(() => {
+    const controller = new AbortController()
+    listReports(1, 18, controller.signal)
+      .then((result) => setRecentReports(result.items))
+      .catch(() => undefined)
+    return () => {
+      controller.abort()
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort()
+    }
+  }, [])
+
+  const handleAnalyze = useCallback(
+    async (request: VerificationRunRequest) => {
+      abortControllerRef.current?.abort()
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+
+      const runId = `run_${Date.now().toString(36)}`
+      activeRunRef.current = runId
+      setIsRunning(true)
+      setError(null)
+
+      const keyword = request.keyword.trim() || extractKeywordFromClaim(request.content)
+      const mode = request.mode
+      const platforms = request.platforms.length > 0 ? request.platforms : DEFAULT_PLATFORMS
+      const startedAt = new Date().toISOString()
+
+      setRun({
+        runId,
+        claim: request.content,
+        keyword,
+        sourceUrl: request.sourceUrl || undefined,
+        mode,
+        platforms,
+        startedAt,
+        status: 'running',
+        activeStepIndex: 0,
+        streamSteps: [],
+        feed: [
+          {
+            id: `${runId}-bootstrap`,
+            time: startedAt,
+            source: 'system',
+            level: 'info',
+            message: '任务创建成功，准备并行调用后端接口。',
+          },
+        ],
+      })
+
+      // 提交后留在当前页面，用户可手动切换到报告页查看结果
+      // setActiveTab('report')
+
+      let analysisResult: AnalyzeResponse | undefined
+      let searchResult: MultiplatformSearchResponse | undefined
+      let aggregateResult: MultiplatformAggregateData | undefined
+      let credibilityResult: CrossPlatformCredibilityData | undefined
+      let multiAgentResult: MultiAgentAnalyzeData | undefined
+      let renderedExtractResult: PlaywrightRenderedExtractData | undefined
+      let streamingPromise: Promise<void> | undefined
+
+      const meta = {
+        run_id: runId,
+        mode,
+        keyword,
+        submitted_at: startedAt,
+        platform_scope: platforms,
+      }
+
+      appendFeed(
+        runId,
+        'system',
+        request.sourceUrl
+          ? '并行任务启动：enhanced + search + aggregate + credibility + multi-agent + rendered-extract'
+          : '并行任务启动：enhanced + search + aggregate + credibility + multi-agent'
+      )
+
+      const analysisTask = analyzeEnhanced(
+        {
+          content: request.content,
+          source_platform: 'frontend',
+          image_urls: request.imageUrls.length > 0 ? request.imageUrls : undefined,
+          metadata: meta,
+        },
+        controller.signal
+      )
+        .then((result) => {
+          if (activeRunRef.current !== runId) return
+          analysisResult = result
+          setRun((previous) => {
+            if (!previous || previous.runId !== runId) return previous
+            return {
+              ...previous,
+              analysis: result,
+              streamSteps: buildInitialStreamSteps(result.reasoning_chain.steps),
+            }
+          })
+          appendFeed(runId, 'intel.enhanced', `推理链返回，共 ${result.reasoning_chain.steps.length} 步`, 'success')
+          streamingPromise = streamReasoningSteps(runId, result.reasoning_chain.steps)
+        })
+        .catch((requestError: unknown) => {
+          if (isAbortError(requestError)) return
+          const message = requestError instanceof Error ? requestError.message : 'enhanced analyze failed'
+          appendFeed(runId, 'intel.enhanced', message, 'error')
+          setError(message)
+        })
+
+      const searchTask = searchMultiplatform(keyword, platforms, 30, controller.signal)
+        .then((result) => {
+          if (activeRunRef.current !== runId) return
+          searchResult = result
+          setRun((previous) => {
+            if (!previous || previous.runId !== runId) return previous
+            return { ...previous, search: result }
+          })
+          appendFeed(runId, 'multiplatform.search', `检索完成：${result.total_posts} 条`, 'success')
+        })
+        .catch((requestError: unknown) => {
+          if (isAbortError(requestError)) return
+          const message = requestError instanceof Error ? requestError.message : 'search failed'
+          appendFeed(runId, 'multiplatform.search', message, 'error')
+        })
+
+      const aggregateTask = aggregateMultiplatform(keyword, platforms, 40, controller.signal)
+        .then((result) => {
+          if (activeRunRef.current !== runId) return
+          aggregateResult = result
+          setRun((previous) => {
+            if (!previous || previous.runId !== runId) return previous
+            return { ...previous, aggregate: result }
+          })
+          appendFeed(
+            runId,
+            'multiplatform.aggregate',
+            `聚合完成：${result.summary.total_posts} 条，${result.summary.platform_count} 平台`,
+            'success'
+          )
+        })
+        .catch((requestError: unknown) => {
+          if (isAbortError(requestError)) return
+          const message = requestError instanceof Error ? requestError.message : 'aggregate failed'
+          appendFeed(runId, 'multiplatform.aggregate', message, 'error')
+        })
+
+      const credibilityTask = analyzeCredibility(keyword, platforms, 30, controller.signal)
+        .then((result) => {
+          if (activeRunRef.current !== runId) return
+          credibilityResult = result
+          setRun((previous) => {
+            if (!previous || previous.runId !== runId) return previous
+            return { ...previous, credibility: result }
+          })
+          appendFeed(
+            runId,
+            'multiplatform.analyze-credibility',
+            `可信度 ${(result.credibility_score * 100).toFixed(1)}%，异常 ${result.anomalies.length} 项`,
+            result.credibility_score < 0.45 ? 'warning' : 'success'
+          )
+        })
+        .catch((requestError: unknown) => {
+          if (isAbortError(requestError)) return
+          const message = requestError instanceof Error ? requestError.message : 'credibility failed'
+          appendFeed(runId, 'multiplatform.analyze-credibility', message, 'error')
+        })
+
+      const agentTask = multiAgentAnalyze(keyword, platforms, controller.signal)
+        .then((result) => {
+          if (activeRunRef.current !== runId) return
+          multiAgentResult = result
+          setRun((previous) => {
+            if (!previous || previous.runId !== runId) return previous
+            return { ...previous, multiAgent: result }
+          })
+          appendFeed(
+            runId,
+            'multiplatform.multi-agent-analyze',
+            `多Agent完成：综合可信度 ${(result.overall_credibility * 100).toFixed(1)}%`,
+            result.overall_credibility < 0.45 ? 'warning' : 'success'
+          )
+        })
+        .catch((requestError: unknown) => {
+          if (isAbortError(requestError)) return
+          const message = requestError instanceof Error ? requestError.message : 'multi-agent failed'
+          appendFeed(runId, 'multiplatform.multi-agent-analyze', message, 'error')
+        })
+
+      const renderedExtractTask = request.sourceUrl
+        ? playwrightRenderedExtract(
+            {
+              url: request.sourceUrl,
+              critical_selector: 'body',
+              schema: DEFAULT_RENDER_SCHEMA,
+              api_url_keyword: 'api',
+              max_api_items: 20,
+              visible_text_limit: 14000,
+              html_limit: 180000,
+              headless: true,
+            },
+            controller.signal
+          )
+            .then((result) => {
+              if (activeRunRef.current !== runId) return
+              renderedExtractResult = result
+              setRun((previous) => {
+                if (!previous || previous.runId !== runId) return previous
+                return { ...previous, renderedExtract: result }
+              })
+              appendFeed(
+                runId,
+                'multiplatform.playwright-rendered-extract',
+                `渲染抽取完成：字段 ${Object.keys(result.fields || {}).length} 个，接口 ${result.api_responses.length} 条`,
+                'success'
+              )
+            })
+            .catch((requestError: unknown) => {
+              if (isAbortError(requestError)) return
+              const message =
+                requestError instanceof Error ? requestError.message : 'rendered extract failed'
+              appendFeed(runId, 'multiplatform.playwright-rendered-extract', message, 'error')
+            })
+        : Promise.resolve()
+
+      await Promise.allSettled([
+        analysisTask,
+        searchTask,
+        aggregateTask,
+        credibilityTask,
+        agentTask,
+        renderedExtractTask,
+      ])
+      if (streamingPromise) {
+        await streamingPromise
+      }
+
+      if (activeRunRef.current !== runId) return
+
+      const narrative = buildNarrativeText({
+        claim: request.content,
+        keyword,
+        analysis: analysisResult,
+        search: searchResult,
+        aggregate: aggregateResult,
+        credibility: credibilityResult,
+        multiAgent: multiAgentResult,
+        renderedExtract: renderedExtractResult,
+      })
+
+      setRun((previous) => {
+        if (!previous || previous.runId !== runId) return previous
+        return { ...previous, generatedNarrative: narrative }
+      })
+
+      if (analysisResult) {
+        appendFeed(runId, 'reports.generate', '开始写入后端报告库...', 'info')
+        try {
+          const report = await generateReport(
+            {
+              title: `Aletheia核验报告-${keyword || '未命名'}-${new Date().toLocaleDateString('zh-CN')}`,
+              content: narrative,
+              credibilityScore: analysisResult.reasoning_chain.final_score,
+              tags: [
+                'frontend_generated',
+                `mode_${mode}`,
+                ...(analysisResult.reasoning_chain.risk_flags || []),
+              ],
+              sources: takeSourcesFromSearch(searchResult),
+            },
+            controller.signal
+          )
+          if (activeRunRef.current === runId) {
+            setRun((previous) => {
+              if (!previous || previous.runId !== runId) return previous
+              return { ...previous, generatedReport: report }
+            })
+            setRecentReports((previous) => [report, ...previous.filter((item) => item.id !== report.id)].slice(0, 18))
+            appendFeed(runId, 'reports.generate', `报告已入库：${report.id}`, 'success')
+          }
+        } catch (requestError) {
+          if (!isAbortError(requestError)) {
+            const message = requestError instanceof Error ? requestError.message : 'report generate failed'
+            appendFeed(runId, 'reports.generate', message, 'error')
+          }
+        }
+      }
+
+      setRun((previous) => {
+        if (!previous || previous.runId !== runId) return previous
+        return {
+          ...previous,
+          status: analysisResult ? 'completed' : 'failed',
+          finishedAt: new Date().toISOString(),
+          errorMessage: analysisResult ? undefined : '增强分析未返回结果',
+        }
+      })
+
+      setIsRunning(false)
+    },
+    [appendFeed, streamReasoningSteps]
+  )
+
+  const handleExport = useCallback(
+    async (format: ExportFormat) => {
+      if (!run?.generatedNarrative) return
+      setIsExporting(true)
+      setError(null)
+      try {
+        const result = await exportReport(format, {
+          title: run.generatedReport?.title || `Aletheia-${run.keyword || 'report'}`,
+          content: run.generatedNarrative,
+          keyword: run.keyword,
+          run_id: run.runId,
+          generated_at: new Date().toISOString(),
+        })
+        downloadBase64File(result)
+        appendFeed(run.runId, 'reports.export', `导出成功：${result.file_name}`, 'success')
+      } catch (requestError) {
+        const message = requestError instanceof Error ? requestError.message : '导出失败'
+        setError(message)
+        appendFeed(run.runId, 'reports.export', message, 'error')
+      } finally {
+        setIsExporting(false)
+      }
+    },
+    [appendFeed, run]
+  )
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-200">
+      <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950/85 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-700" />
+            <div>
+              <h1 className="text-lg font-black tracking-tight text-white">Aletheia Emergency Console</h1>
+              <p className="text-xs text-slate-500">后端全链路对接 · 多 Agent 流式取证</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-1 rounded-xl border border-slate-800 bg-slate-900/90 p-1">
+            {TAB_ITEMS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                  activeTab === tab.id
+                    ? 'bg-cyan-600 text-white'
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                }`}
+              >
+                <span className="mr-1">{tab.icon}</span>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-6 py-6">
+        <AnimatePresence mode="wait">
+          {activeTab === 'verify' && (
+            <motion.div
+              key="verify"
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -18 }}
+              transition={{ duration: 0.2 }}
+            >
+              <VerificationForm
+                onSubmit={handleAnalyze}
+                isLoading={isRunning}
+                error={error}
+                recentReports={recentReports}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === 'report' && (
+            <motion.div
+              key="report"
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -18 }}
+              transition={{ duration: 0.2 }}
+            >
+              <AnalysisResult
+                run={run}
+                isRunning={isRunning}
+                error={error}
+                isExporting={isExporting}
+                onExport={handleExport}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === 'search' && (
+            <motion.div
+              key="search"
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -18 }}
+              transition={{ duration: 0.2 }}
+            >
+              <SearchScreen run={run} isRunning={isRunning} />
+            </motion.div>
+          )}
+
+          {activeTab === 'evidence' && (
+            <motion.div
+              key="evidence"
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -18 }}
+              transition={{ duration: 0.2 }}
+            >
+              <EvidenceTopology run={run} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+    </div>
+  )
+}
+
+export default App
