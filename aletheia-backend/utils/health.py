@@ -378,31 +378,41 @@ class HealthChecker:
             import aiohttp
 
             async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"{settings.MEDIACRAWLER_BASE_URL}/health",
-                    timeout=aiohttp.ClientTimeout(total=5),
-                ) as response:
-                    latency = (time.time() - start_time) * 1000
+                endpoints = ["/api/health", "/health"]
+                for endpoint in endpoints:
+                    try:
+                        async with session.get(
+                            f"{settings.MEDIACRAWLER_BASE_URL}{endpoint}",
+                            timeout=aiohttp.ClientTimeout(total=5),
+                        ) as response:
+                            latency = (time.time() - start_time) * 1000
+                            if response.status == 200:
+                                return ComponentHealth(
+                                    name="mediacrawler",
+                                    status=HealthStatus.HEALTHY,
+                                    message="MediaCrawler is running",
+                                    latency_ms=latency,
+                                    details={
+                                        "enabled": True,
+                                        "base_url": settings.MEDIACRAWLER_BASE_URL,
+                                        "health_endpoint": endpoint,
+                                    },
+                                    last_check=datetime.now(),
+                                )
+                    except Exception:
+                        continue
 
-                    if response.status == 200:
-                        return ComponentHealth(
-                            name="mediacrawler",
-                            status=HealthStatus.HEALTHY,
-                            message="MediaCrawler is running",
-                            latency_ms=latency,
-                            details={
-                                "enabled": True,
-                                "base_url": settings.MEDIACRAWLER_BASE_URL,
-                            },
-                            last_check=datetime.now(),
-                        )
-                    else:
-                        return ComponentHealth(
-                            name="mediacrawler",
-                            status=HealthStatus.DEGRADED,
-                            message=f"MediaCrawler returned status {response.status}",
-                            latency_ms=latency,
-                        )
+                latency = (time.time() - start_time) * 1000
+                return ComponentHealth(
+                    name="mediacrawler",
+                    status=HealthStatus.DEGRADED,
+                    message="MediaCrawler health endpoint unavailable",
+                    latency_ms=latency,
+                    details={
+                        "enabled": True,
+                        "base_url": settings.MEDIACRAWLER_BASE_URL,
+                    },
+                )
 
         except asyncio.TimeoutError:
             latency = (time.time() - start_time) * 1000
