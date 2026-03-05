@@ -54,6 +54,7 @@ class InvestigationRunRequest(BaseModel):
     mediacrawler_platforms: Optional[
         List[Literal["weibo", "xiaohongshu", "douyin", "zhihu"]]
     ] = None
+    mediacrawler_force_run: Optional[bool] = None
     mediacrawler_timeout_sec: Optional[int] = Field(default=None, ge=20, le=600)
     enable_cached_evidence: bool = True
     phase1_target_valid_evidence: int = Field(default=30, ge=10, le=1000)

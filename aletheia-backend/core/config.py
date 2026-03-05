@@ -320,6 +320,7 @@ class Settings(BaseSettings):
     MEDIACRAWLER_TASK_TIMEOUT_SEC: int = 120
     MEDIACRAWLER_PLATFORMS: str = "xiaohongshu,douyin,weibo,zhihu"
     MEDIACRAWLER_MAX_ITEMS_PER_PLATFORM: int = 80
+    MEDIACRAWLER_FORCE_RUN: bool = True
     MEDIACRAWLER_TRIGGER_EMPTY_ONLY: bool = False
     MEDIACRAWLER_TRIGGER_ALL_FALLBACK: bool = True
 

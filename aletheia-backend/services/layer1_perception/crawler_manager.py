@@ -1556,6 +1556,7 @@ class CrawlerManager:
             "platform": platform,
             "enabled": False,
             "active": False,
+            "force_run": False,
             "triggered": False,
             "trigger_reason": "",
             "native_count": 0,
@@ -1593,6 +1594,7 @@ class CrawlerManager:
             )
             sidecar_diag["enabled"] = bool(runtime_sidecar_options.get("enabled"))
             sidecar_diag["active"] = bool(runtime_sidecar_options.get("active"))
+            sidecar_diag["force_run"] = bool(runtime_sidecar_options.get("force_run"))
             if not sidecar_diag["active"]:
                 sidecar_diag["error"] = str(runtime_sidecar_options.get("reason") or "")
 
@@ -3069,12 +3071,19 @@ class CrawlerManager:
             ),
         )
         timeout_sec = max(20.0, min(600.0, timeout_sec))
+        force_run_req = req.get("mediacrawler_force_run")
+        force_run = (
+            bool(force_run_req)
+            if force_run_req is not None
+            else bool(getattr(settings, "MEDIACRAWLER_FORCE_RUN", True))
+        )
         return {
             "enabled": bool(client.active and req_enable),
             "active": bool(client.active),
             "reason": "" if client.active else "MEDIACRAWLER_DISABLED_OR_ACK_REQUIRED",
             "platforms": target_platforms,
             "timeout_sec": timeout_sec,
+            "force_run": force_run,
             "max_items": int(self._mediacrawler_max_items_per_platform),
             "trigger_empty_only": bool(
                 getattr(settings, "MEDIACRAWLER_TRIGGER_EMPTY_ONLY", False)
@@ -3124,6 +3133,8 @@ class CrawlerManager:
         target_platforms = set(mediacrawler_options.get("platforms") or set())
         if target_platforms and platform not in target_platforms:
             return False, "NOT_IN_REQUESTED_PLATFORMS"
+        if bool(mediacrawler_options.get("force_run")):
+            return True, "FORCE_RUN"
         if not native_items:
             return True, "NATIVE_EMPTY"
         if bool(mediacrawler_options.get("trigger_empty_only")):

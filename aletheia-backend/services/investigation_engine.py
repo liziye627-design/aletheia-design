@@ -2946,6 +2946,7 @@ class InvestigationOrchestrator:
         mediacrawler_options: Dict[str, Any] = {
             "use_mediacrawler": req.get("use_mediacrawler"),
             "mediacrawler_platforms": req.get("mediacrawler_platforms"),
+            "mediacrawler_force_run": req.get("mediacrawler_force_run"),
             "mediacrawler_timeout_sec": req.get("mediacrawler_timeout_sec"),
             "strict_search_only": bool(
                 req.get(
@@ -3155,6 +3156,11 @@ class InvestigationOrchestrator:
                 "enabled_by_request": req_use_mediacrawler,
                 "ack": mediacrawler_ack_cfg,
                 "platforms": [str(x).strip() for x in mediacrawler_platforms if str(x).strip()],
+                "force_run": bool(
+                    mediacrawler_options.get("mediacrawler_force_run")
+                    if mediacrawler_options.get("mediacrawler_force_run") is not None
+                    else getattr(settings, "MEDIACRAWLER_FORCE_RUN", True)
+                ),
                 "timeout_sec": req.get("mediacrawler_timeout_sec")
                 or int(getattr(settings, "MEDIACRAWLER_TASK_TIMEOUT_SEC", 120)),
             },
