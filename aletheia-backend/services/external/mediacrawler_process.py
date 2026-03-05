@@ -55,12 +55,23 @@ class MediaCrawlerProcessManager:
         return self._auto_started
 
     def _resolve_home(self) -> Path:
-        home = str(getattr(settings, "MEDIACRAWLER_HOME", "../MediaCrawler") or "../MediaCrawler")
+        home = str(
+            getattr(settings, "MEDIACRAWLER_HOME", "third_party/MediaCrawler")
+            or "third_party/MediaCrawler"
+        )
         home_path = Path(home)
         if home_path.is_absolute():
             return home_path
-        cwd = Path(os.getcwd())
-        return (cwd / home_path).resolve()
+
+        # Prefer CWD-relative path first for CLI/dev usage.
+        cwd_candidate = (Path(os.getcwd()) / home_path).resolve()
+        if cwd_candidate.exists():
+            return cwd_candidate
+
+        # Fallback to backend-root relative path for service/runtime usage.
+        backend_root = Path(__file__).resolve().parents[2]
+        backend_candidate = (backend_root / home_path).resolve()
+        return backend_candidate
 
     async def wait_until_healthy(self, timeout_sec: Optional[float] = None) -> bool:
         timeout = float(timeout_sec or getattr(settings, "MEDIACRAWLER_STARTUP_TIMEOUT_SEC", 45))
@@ -235,4 +246,3 @@ def get_mediacrawler_process_manager() -> MediaCrawlerProcessManager:
     if _mediacrawler_process_manager_singleton is None:
         _mediacrawler_process_manager_singleton = MediaCrawlerProcessManager()
     return _mediacrawler_process_manager_singleton
-

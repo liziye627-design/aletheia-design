@@ -34,16 +34,16 @@ Thumbs.db
 **/.vscode/
 **/.idea/
 
-# Ignore large third-party snapshots in this workspace
-Fake-News-Detection/
-MediaCrawler/
-NewsSpider/
-PublicOpinion/
-weibo-public-opinion-analysis/
-runtime/
-assets/
-slide-deck/
-changes/
+# Ignore large third-party snapshots in this workspace (root only)
+/Fake-News-Detection/
+/MediaCrawler/
+/NewsSpider/
+/PublicOpinion/
+/weibo-public-opinion-analysis/
+/runtime/
+/assets/
+/slide-deck/
+/changes/
 
 # Binary design artifacts
 *.pen

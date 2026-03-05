@@ -312,7 +312,7 @@ class Settings(BaseSettings):
     MEDIACRAWLER_NONCOMMERCIAL_ACK: bool = True
     MEDIACRAWLER_BASE_URL: str = "http://127.0.0.1:18080"
     MEDIACRAWLER_AUTO_START: bool = True
-    MEDIACRAWLER_HOME: str = "../MediaCrawler"
+    MEDIACRAWLER_HOME: str = "third_party/MediaCrawler"
     MEDIACRAWLER_START_COMMAND: str = "uv run uvicorn api.main:app --host 127.0.0.1 --port 18080"
     MEDIACRAWLER_HEADLESS: bool = False
     MEDIACRAWLER_STARTUP_TIMEOUT_SEC: int = 45
