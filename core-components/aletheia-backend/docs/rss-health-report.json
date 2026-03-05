@@ -1,0 +1,299 @@
+{
+  "summary": {
+    "total_sources": 41,
+    "healthy_count": 20,
+    "unhealthy_count": 21,
+    "health_rate": 48.78,
+    "checked_at": "2026-03-03T22:46:25.391151"
+  },
+  "healthy_sources": [
+    {
+      "source_id": "people_all",
+      "name": "人民网-要闻快讯(全部)",
+      "url": "http://www.people.com.cn/rss/ywkx.xml",
+      "category": "时政/综合",
+      "response_time_ms": 282.66,
+      "entry_count": 50
+    },
+    {
+      "source_id": "jiemian_rss",
+      "name": "界面新闻-RSS",
+      "url": "https://a.jiemian.com/index.php?a=rss&m=article",
+      "category": "财经/商业",
+      "response_time_ms": 376.82,
+      "entry_count": 30
+    },
+    {
+      "source_id": "gov_policy_latest",
+      "name": "国务院-政策最新",
+      "url": "https://www.gov.cn/jsonTag/tp/rss.xml",
+      "category": "政策",
+      "response_time_ms": 410.76,
+      "entry_count": 60
+    },
+    {
+      "source_id": "people_world",
+      "name": "人民网-国际",
+      "url": "http://www.people.com.cn/rss/world.xml",
+      "category": "国际",
+      "response_time_ms": 455.94,
+      "entry_count": 100
+    },
+    {
+      "source_id": "chinanews_world",
+      "name": "中国新闻网-国际",
+      "url": "https://www.chinanews.com.cn/rss/world.xml",
+      "category": "国际",
+      "response_time_ms": 525.94,
+      "entry_count": 30
+    },
+    {
+      "source_id": "people_hmt",
+      "name": "人民网-台港澳",
+      "url": "http://www.people.com.cn/rss/haixia.xml",
+      "category": "港澳台",
+      "response_time_ms": 533.43,
+      "entry_count": 100
+    },
+    {
+      "source_id": "people_politics",
+      "name": "人民网-时政",
+      "url": "http://www.people.com.cn/rss/politics.xml",
+      "category": "时政",
+      "response_time_ms": 600.48,
+      "entry_count": 100
+    },
+    {
+      "source_id": "chinanews_china",
+      "name": "中国新闻网-时政(国内)",
+      "url": "https://www.chinanews.com.cn/rss/china.xml",
+      "category": "时政",
+      "response_time_ms": 694.15,
+      "entry_count": 30
+    },
+    {
+      "source_id": "people_society",
+      "name": "人民网-社会",
+      "url": "http://www.people.com.cn/rss/society.xml",
+      "category": "社会",
+      "response_time_ms": 701.96,
+      "entry_count": 100
+    },
+    {
+      "source_id": "chinanews_society",
+      "name": "中国新闻网-社会",
+      "url": "https://www.chinanews.com.cn/rss/society.xml",
+      "category": "社会",
+      "response_time_ms": 772.76,
+      "entry_count": 30
+    },
+    {
+      "source_id": "people_legal",
+      "name": "人民网-法治",
+      "url": "http://www.people.com.cn/rss/legal.xml",
+      "category": "法治",
+      "response_time_ms": 773.97,
+      "entry_count": 100
+    },
+    {
+      "source_id": "people_military",
+      "name": "人民网-军事",
+      "url": "http://www.people.com.cn/rss/military.xml",
+      "category": "军事",
+      "response_time_ms": 877.77,
+      "entry_count": 100
+    },
+    {
+      "source_id": "chinanews_scroll",
+      "name": "中国新闻网-即时滚动",
+      "url": "https://www.chinanews.com.cn/rss/scroll-news.xml",
+      "category": "综合/快讯",
+      "response_time_ms": 958.09,
+      "entry_count": 30
+    },
+    {
+      "source_id": "tmtpost_feed",
+      "name": "钛媒体-RSS",
+      "url": "https://www.tmtpost.com/feed",
+      "category": "科技/商业",
+      "response_time_ms": 1159.1,
+      "entry_count": 17
+    },
+    {
+      "source_id": "v2ex_tab_tech",
+      "name": "V2EX-Tab(tech)",
+      "url": "https://www.v2ex.com/feed/tab/tech.xml",
+      "category": "开发者/技术",
+      "response_time_ms": 1569.35,
+      "entry_count": 50
+    },
+    {
+      "source_id": "ifanr_feed",
+      "name": "爱范儿-RSS",
+      "url": "http://ifanr.com/feed",
+      "category": "科技/产品",
+      "response_time_ms": 1572.08,
+      "entry_count": 20
+    },
+    {
+      "source_id": "v2ex_all",
+      "name": "V2EX-全站新主题",
+      "url": "https://www.v2ex.com/index.xml",
+      "category": "开发者/社区",
+      "response_time_ms": 1597.47,
+      "entry_count": 50
+    },
+    {
+      "source_id": "ruanyifeng_atom",
+      "name": "阮一峰-博客Atom",
+      "url": "http://www.ruanyifeng.com/blog/atom.xml",
+      "category": "开发者/技术",
+      "response_time_ms": 2663.36,
+      "entry_count": 3
+    },
+    {
+      "source_id": "stats_interpret",
+      "name": "国家统计局-数据解读",
+      "url": "https://www.stats.gov.cn/sj/sjjd/rss.xml",
+      "category": "数据/解读",
+      "response_time_ms": 10414.02,
+      "entry_count": 500
+    },
+    {
+      "source_id": "stats_release",
+      "name": "国家统计局-最新发布",
+      "url": "https://www.stats.gov.cn/sj/zxfb/rss.xml",
+      "category": "数据/统计",
+      "response_time_ms": 12385.74,
+      "entry_count": 500
+    }
+  ],
+  "unhealthy_sources": [
+    {
+      "source_id": "cctv_domestic",
+      "name": "CCTV-国内",
+      "url": "http://www.cctv.com/program/rss/02/01/index.xml",
+      "error": "Parse error: CharacterEncodingOverride"
+    },
+    {
+      "source_id": "cctv_world",
+      "name": "CCTV-国际",
+      "url": "http://www.cctv.com/program/rss/02/02/index.xml",
+      "error": "Parse error: CharacterEncodingOverride"
+    },
+    {
+      "source_id": "cctv_sports",
+      "name": "CCTV-体育",
+      "url": "http://www.cctv.com/program/rss/02/03/index.xml",
+      "error": "Parse error: CharacterEncodingOverride"
+    },
+    {
+      "source_id": "cctv_finance",
+      "name": "CCTV-财经",
+      "url": "http://www.cctv.com/program/rss/02/04/index.xml",
+      "error": "Parse error: CharacterEncodingOverride"
+    },
+    {
+      "source_id": "cctv_science",
+      "name": "CCTV-科教",
+      "url": "http://www.cctv.com/program/rss/02/05/index.xml",
+      "error": "Parse error: CharacterEncodingOverride"
+    },
+    {
+      "source_id": "cctv_society",
+      "name": "CCTV-社会",
+      "url": "http://www.cctv.com/program/rss/02/06/index.xml",
+      "error": "Parse error: CharacterEncodingOverride"
+    },
+    {
+      "source_id": "cctv_ent",
+      "name": "CCTV-文娱",
+      "url": "http://www.cctv.com/program/rss/02/07/index.xml",
+      "error": "Parse error: CharacterEncodingOverride"
+    },
+    {
+      "source_id": "sina_rss_root",
+      "name": "新浪RSS-总入口(频道聚合)",
+      "url": "https://rss.sina.com.cn/",
+      "error": "Skipped: index page, not RSS feed"
+    },
+    {
+      "source_id": "sohu_rss_root",
+      "name": "搜狐RSS-总入口",
+      "url": "https://rss.news.sohu.com/",
+      "error": "Skipped: index page, not RSS feed"
+    },
+    {
+      "source_id": "ifeng_news_rss_root",
+      "name": "凤凰资讯RSS-总入口",
+      "url": "https://news.ifeng.com/rss/",
+      "error": "Skipped: index page, not RSS feed"
+    },
+    {
+      "source_id": "ifeng_auto_rss_root",
+      "name": "凤凰汽车RSS-总入口",
+      "url": "https://auto.ifeng.com/rss/",
+      "error": "Skipped: index page, not RSS feed"
+    },
+    {
+      "source_id": "baidu_news_rss_center",
+      "name": "百度新闻RSS-订阅中心(分类/关键词/地区)",
+      "url": "https://www.baidu.com/search/rss.html",
+      "error": "Parse error: SAXParseException"
+    },
+    {
+      "source_id": "kr36_feed",
+      "name": "36氪-综合",
+      "url": "https://36kr.com/feed",
+      "error": "Parse error: SAXParseException"
+    },
+    {
+      "source_id": "kr36_article",
+      "name": "36氪-文章",
+      "url": "https://36kr.com/feed-article",
+      "error": "Parse error: SAXParseException"
+    },
+    {
+      "source_id": "kr36_newsflash",
+      "name": "36氪-快讯",
+      "url": "https://36kr.com/feed-newsflash",
+      "error": "Parse error: SAXParseException"
+    },
+    {
+      "source_id": "ithome_rss",
+      "name": "IT之家-RSS",
+      "url": "http://www.ithome.com/rss/",
+      "error": "Skipped: index page, not RSS feed"
+    },
+    {
+      "source_id": "gasgoo_rss",
+      "name": "盖世汽车-RSS中心",
+      "url": "https://auto.gasgoo.com/rss/rss.html",
+      "error": "HTTP 403"
+    },
+    {
+      "source_id": "health39_rss_root",
+      "name": "39健康网-RSS中心",
+      "url": "https://rss.39.net/",
+      "error": "Skipped: index page, not RSS feed"
+    },
+    {
+      "source_id": "sciencenet_rss_center",
+      "name": "科学网-RSS中心(学科/博客/论文/招聘等)",
+      "url": "https://www.sciencenet.cn/RSS.aspx",
+      "error": "Parse error: SAXParseException"
+    },
+    {
+      "source_id": "arxiv_rss_help",
+      "name": "arXiv-RSS说明(按学科订阅)",
+      "url": "https://info.arxiv.org/help/rss.html",
+      "error": "Parse error: SAXParseException"
+    },
+    {
+      "source_id": "biorxiv_alerts",
+      "name": "bioRxiv-Alerts & RSS/Atom",
+      "url": "https://www.biorxiv.org/alertsrss",
+      "error": "Parse error: SAXParseException"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+# comments.yaml
+version: 1
+
+comment_discovery:
+  dom_hints_any: ["comment", "comments", "reply", "thread", "hotcomment", "newcomment"]
+  id_hints_any: ["docId", "newsId", "articleId", "object_id", "thread_id"]
+  captcha_keywords_any: ["验证码", "安全验证", "人机验证", "访问过于频繁"]
+
+network_capture:
+  enabled: true
+  max_wait_ms: 6000
+  response_must_be: ["json"]
+  json_fields_any: ["comments", "list", "items", "data", "hot", "replies"]
+
+fetch:
+  first_fetch:
+    max_pages: 10
+    page_size: 20
+  incremental:
+    interval_minutes: 20
+    active_hours: 12
+  per_domain_limits:
+    max_comment_fetches_per_hour: 80
+
+fetch_policy:
+  min_score: 70
+  require_summary_level: false

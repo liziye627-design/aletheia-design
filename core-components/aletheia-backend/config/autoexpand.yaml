@@ -1,0 +1,48 @@
+# autoexpand.yaml
+version: 1
+
+# 是否启用自动扩源（默认关闭，需显式打开）
+enabled: false
+
+seeds:
+  # 目录/中心页（HTML 列表或 RSS 目录页）
+  directory_pages:
+    - source_id: sina_rss_center
+      name: 新浪RSS中心
+      url: https://rss.sina.com.cn/
+    - source_id: sohu_rss_center
+      name: 搜狐RSS中心
+      url: http://rss.sohu.com/
+
+  # OPML/聚合文件（若有）
+  opml_urls: []
+
+  # 已知站点的“入口页”
+  site_homepages: []
+
+# 发现规则
+discovery:
+  rel_alternate: true
+  guess_paths: ["/rss", "/feed", "/rss.xml", "/atom.xml", "/index.xml", "/feed.xml"]
+  max_candidates_per_page: 50
+
+# Feed 验证
+validation:
+  min_entries: 5
+  require_title_link: true
+  recent_days: 7
+
+# 评分（用于决定是否自动入库）
+scoring:
+  min_quality_score: 70
+  weights:
+    parse_success: 25
+    freshness: 20
+    duplication_penalty: 15
+    source_authority: 20
+    risk_friendly: 20
+
+output:
+  path: config/sources.auto.yaml
+  mode_default: rss_only
+  comment_policy_default: try_public
