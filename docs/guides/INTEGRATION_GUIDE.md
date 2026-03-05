@@ -144,6 +144,40 @@ curl -s -X POST http://localhost:8000/api/v1/investigations/run \
 - 前端日志：`runtime/logs/frontend.log`
 - 浏览器控制台：Network / Console（检查 SSE 与 API 失败）
 
+### 6. 分阶段质量验收（推荐）
+
+不要把“流程跑通”当作通过标准。建议使用阶段质量门脚本，逐阶段核验：
+- `health_check`
+- `preview_quality`
+- `run_acceptance`
+- `stream_quality`
+- `result_quality`
+
+执行示例：
+
+```bash
+cd aletheia-backend
+python3 scripts/stage_quality_gate.py \
+  --claim "OpenAI发布了新的模型能力更新" \
+  --keyword "OpenAI 模型更新" \
+  --max-attempts 2
+```
+
+你可以按场景调节阈值，例如：
+- `--preview-summary-min-chars`
+- `--stream-events-min`
+- `--result-valid-evidence-min`
+- `--result-platforms-with-data-min`
+- `--result-duration-budget-sec`
+
+验收输出包含每阶段：
+- `expected`（预期）
+- `observed`（实际）
+- `issues`（不达标原因）
+- `score`（阶段评分）
+
+原则：任何阶段不达标，都先修阶段问题，再继续下一轮验收。
+
 ## 🔍 验证集成
 
 ### 方法1: 使用API连通性测试
