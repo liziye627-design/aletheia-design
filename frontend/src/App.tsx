@@ -246,6 +246,7 @@ function App() {
   const [isGeoGenerating, setIsGeoGenerating] = useState(false)
   const [publishError, setPublishError] = useState('')
   const [geoReport, setGeoReport] = useState<ReportResponse | null>(null)
+  const [opinionRuntime, setOpinionRuntime] = useState<Record<string, unknown> | null>(null)
   const [openStages, setOpenStages] = useState<Record<ProgramPhase, boolean>>({
     preview: false,
     evidence: false,
@@ -426,6 +427,7 @@ function App() {
     if (!claim.trim() || isBusy) return
     setIsBusy(true)
     setError('')
+    setOpinionRuntime(null)
     resetRun()
     setOpenStages({ preview: false, evidence: false, verification: false, conclusion: false })
     setHumanConfirmChecked(false)
@@ -481,6 +483,7 @@ function App() {
     }
     setIsBusy(true)
     setError('')
+    setOpinionRuntime(null)
     setAwaitingHumanConfirm(false)
     const confirmedAt = new Date().toISOString()
     setHumanConfirmedAt(confirmedAt)
@@ -515,6 +518,7 @@ function App() {
         platforms,
         mode: 'dual',
         audience_profile: 'both',
+        enable_opinion_monitoring: true,
         human_notes: humanNotes.trim() || undefined,
         confirmed_preview_id: preview.preview_id,
         confirmed_claims: preview.claims_draft.map((x) => x.text),
@@ -624,6 +628,24 @@ function App() {
           }
         })
 
+        source.addEventListener('opinion_monitoring_ready', (event) => {
+          try {
+            const payload = JSON.parse((event as MessageEvent).data || '{}') as Record<string, unknown>
+            setOpinionRuntime(payload)
+            pushStreamEvent({ type: 'opinion_monitoring_ready', payload })
+            pushPhaseLog(
+              'verification',
+              buildLog(
+                `评论监测完成：${String(payload.risk_level || 'unknown').toUpperCase()} · 可疑 ${Math.round(Number(payload.suspicious_ratio || 0) * 100)}% · 真实 ${Math.round(Number(payload.real_comment_ratio || 0) * 100)}%`,
+                'opinion_monitoring_ready',
+                payload,
+              ),
+            )
+          } catch {
+            // ignore
+          }
+        })
+
         source.addEventListener('run_completed', () => {
           clearTimeout(timeout)
           source.close()
@@ -647,6 +669,9 @@ function App() {
 
       const final = await getInvestigationResult(accepted.run_id)
       setResult(final)
+      if (final?.opinion_monitoring && typeof final.opinion_monitoring === 'object') {
+        setOpinionRuntime(final.opinion_monitoring as Record<string, unknown>)
+      }
       setFreshness(deriveFreshness(final))
       const terminal = isTerminalStatus(final.status)
 
@@ -674,7 +699,7 @@ function App() {
 
         setPhaseStatus('verification', {
           status: 'done',
-          summary: `主张结论：${String(((final.claim_analysis || {}) as Record<string, unknown>).run_verdict || 'UNCERTAIN')}`,
+          summary: `主张结论：${String(((final.claim_analysis || {}) as Record<string, unknown>).run_verdict || 'UNCERTAIN')} · 舆情风险：${String((((final.opinion_monitoring || {}) as Record<string, unknown>).risk_level || 'unknown')).toUpperCase()} · 可疑占比 ${Math.round(Number((((final.opinion_monitoring || {}) as Record<string, unknown>).suspicious_ratio || 0)) * 100)}%`,
           actionHint: '检查冲突点并决定是否人审',
         })
 
@@ -1170,6 +1195,28 @@ function App() {
                           <div className="stage-detail-block">
                             <p>主张结论：{String((result.claim_analysis as Record<string, unknown>).run_verdict || 'UNCERTAIN')}</p>
                             <p>待复核数量：{Array.isArray((result.claim_analysis as Record<string, unknown>).review_queue) ? ((result.claim_analysis as Record<string, unknown>).review_queue as unknown[])?.length : 0}</p>
+                            <p>
+                              评论/水军检测：
+                              {String(
+                                (opinionRuntime?.status as string)
+                                || (((result.opinion_monitoring || {}) as Record<string, unknown>).status as string)
+                                || 'NOT_RUN'
+                              )}
+                              {' · 风险 '}
+                              {String(
+                                (opinionRuntime?.risk_level as string)
+                                || (((result.opinion_monitoring || {}) as Record<string, unknown>).risk_level as string)
+                                || 'unknown'
+                              ).toUpperCase()}
+                              {' · 可疑占比 '}
+                              {Math.round(
+                                Number(
+                                  opinionRuntime?.suspicious_ratio
+                                  ?? (((result.opinion_monitoring || {}) as Record<string, unknown>).suspicious_ratio as number)
+                                  ?? 0
+                                ) * 100
+                              )}%
+                            </p>
                           </div>
                         )}
                         {phase.key === 'conclusion' && (

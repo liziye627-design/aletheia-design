@@ -442,6 +442,7 @@ export interface InvestigationRunRequest {
   confirmed_preview_id?: string
   confirmed_claims?: string[]
   confirmed_platforms?: string[]
+  enable_opinion_monitoring?: boolean
 }
 
 export interface InvestigationRunAccepted {

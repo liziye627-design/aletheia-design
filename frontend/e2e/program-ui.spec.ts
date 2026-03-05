@@ -185,6 +185,7 @@ test('program flow triggers review gate and my workspace replay', async ({ page 
   await page.getByRole('button', { name: '任务管理' }).click()
   await expect(page.getByText('需人工复核')).toBeVisible({ timeout: 10000 })
   await expect(page.getByRole('heading', { name: '结论阶段' })).toBeVisible()
+  await expect(page.getByText(/舆情风险：HIGH/)).toBeVisible()
 
   await page.getByRole('button', { name: '历史档案' }).click()
   await expect(page.getByRole('heading', { name: '我的待办' })).toBeVisible()
