@@ -16,6 +16,9 @@ T = TypeVar("T")
 
 class CircuitBreaker:
     """熔断器模式实现 - 防止级联故障（线程安全）"""
+    STATE_CLOSED = "CLOSED"
+    STATE_OPEN = "OPEN"
+    STATE_HALF_OPEN = "HALF_OPEN"
 
     def __init__(
         self,
@@ -40,7 +43,7 @@ class CircuitBreaker:
 
         self.failure_count = 0
         self.last_failure_time = None
-        self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+        self.state = self.STATE_CLOSED
 
         # Thread safety locks
         self._lock = threading.RLock()
@@ -62,9 +65,9 @@ class CircuitBreaker:
             Exception: 如果熔断器打开或函数失败
         """
         with self._lock:
-            if self.state == "OPEN":
+            if self.state == self.STATE_OPEN:
                 if self._should_attempt_reset():
-                    self.state = "HALF_OPEN"
+                    self.state = self.STATE_HALF_OPEN
                     logger.info(
                         f"🔄 Circuit breaker '{self.name}' entering HALF_OPEN state"
                     )
@@ -84,9 +87,9 @@ class CircuitBreaker:
     async def call_async(self, func: Callable, *args, **kwargs) -> Any:
         """异步版本的call（线程安全）"""
         async with self._async_lock:
-            if self.state == "OPEN":
+            if self.state == self.STATE_OPEN:
                 if self._should_attempt_reset():
-                    self.state = "HALF_OPEN"
+                    self.state = self.STATE_HALF_OPEN
                     logger.info(
                         f"🔄 Circuit breaker '{self.name}' entering HALF_OPEN state"
                     )
@@ -114,9 +117,9 @@ class CircuitBreaker:
     def _on_success(self):
         """成功回调（线程安全）"""
         with self._lock:
-            if self.state == "HALF_OPEN":
-                self.state = "CLOSED"
-                self.failure_count = 0
+            self.failure_count = 0
+            if self.state == self.STATE_HALF_OPEN:
+                self.state = self.STATE_CLOSED
                 logger.info(f"✅ Circuit breaker '{self.name}' reset to CLOSED")
 
     def _on_failure(self):
@@ -126,7 +129,7 @@ class CircuitBreaker:
             self.last_failure_time = datetime.now()
 
             if self.failure_count >= self.failure_threshold:
-                self.state = "OPEN"
+                self.state = self.STATE_OPEN
                 logger.error(
                     f"🔥 Circuit breaker '{self.name}' opened after {self.failure_count} failures"
                 )
@@ -140,12 +143,12 @@ class CircuitBreaker:
             True if circuit breaker allows execution
         """
         with self._lock:
-            if self.state == "CLOSED":
+            if self.state == self.STATE_CLOSED:
                 return True
 
-            if self.state == "OPEN":
+            if self.state == self.STATE_OPEN:
                 if self._should_attempt_reset():
-                    self.state = "HALF_OPEN"
+                    self.state = self.STATE_HALF_OPEN
                     return True
                 return False
 
@@ -167,7 +170,7 @@ class CircuitBreaker:
     @property
     def is_open(self) -> bool:
         """Check if circuit breaker is open"""
-        return self.state == "OPEN"
+        return self.state == self.STATE_OPEN
 
 
 class RetryStrategy:

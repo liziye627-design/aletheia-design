@@ -121,7 +121,8 @@ class EvidenceAdapter:
         self.crawler_manager = crawler_manager
         self.config = config or EvidenceCollectionConfig(
             max_total_items=300,
-            fetch_detail_pages=True,
+            # 保持适配器在离线/测试环境可用，避免详情页抓取失败导致结果全空
+            fetch_detail_pages=False,
             enable_deduplication=True,
             enable_scoring=True,
         )
@@ -173,6 +174,22 @@ class EvidenceAdapter:
         # Sort by evidence score
         cards.sort(key=lambda x: x.evidence_score, reverse=True)
 
+        # 软降级：若严格阈值导致空集，则返回最高分候选以维持流程可用性
+        if (not cards) and result.evidence_docs:
+            fallback_docs = sorted(
+                list(result.evidence_docs),
+                key=lambda d: float(getattr(d, "evidence_score", 0.0) or 0.0),
+                reverse=True,
+            )[:max_items]
+            cards = [self._doc_to_card(doc, claim) for doc in fallback_docs]
+        # 更深一层降级：当 evidence_docs 为空时，回退为 search_hits 直出卡片
+        if (not cards) and result.search_hits:
+            cards = self._search_hits_to_cards(
+                claim=claim,
+                hits=result.search_hits,
+                max_items=max_items,
+            )
+
         logger.info(
             "evidence_cards_collected",
             claim=claim[:50],
@@ -181,6 +198,45 @@ class EvidenceAdapter:
         )
 
         return cards
+
+    def _search_hits_to_cards(
+        self,
+        *,
+        claim: str,
+        hits: List[Any],
+        max_items: int,
+    ) -> List[EvidenceCard]:
+        out: List[EvidenceCard] = []
+        for idx, hit in enumerate(list(hits)[:max_items]):
+            url = str(getattr(hit, "hit_url", "") or "")
+            domain = str(getattr(hit, "source_domain", "") or urlparse(url).netloc or "")
+            source_tier = self.TIER_MAP.get(self.tier_resolver.resolve(domain), 3)
+            snippet = str(
+                getattr(hit, "hit_snippet", "") or getattr(hit, "hit_title", "") or ""
+            )[:500]
+            out.append(
+                EvidenceCard(
+                    id=f"ev_hit_{idx}_{abs(hash(url)) % 10_000_000}",
+                    claim_ref=claim,
+                    source_tier=source_tier,
+                    source_name=domain or str(getattr(hit, "platform", "") or "unknown"),
+                    source_platform=str(getattr(hit, "platform", "") or "unknown"),
+                    evidence_origin="external",
+                    url=url,
+                    snippet=snippet,
+                    confidence=0.5,
+                    collected_at=datetime.utcnow().isoformat(),
+                    retrieval_query=str(getattr(hit, "query", "") or claim),
+                    validation_status="provisional",
+                    keyword_match=True,
+                    relevance_score=0.35,
+                    retrieval_mode="search_hit_fallback",
+                    evidence_score=0.35,
+                    extraction_method="fallback",
+                    extraction_confidence=0.3,
+                )
+            )
+        return out
 
     async def collect_evidence_cards_from_platform(
         self,

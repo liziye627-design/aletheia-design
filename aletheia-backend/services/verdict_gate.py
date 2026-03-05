@@ -68,7 +68,7 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
 
 
 def _get_platform_tier(platform: str) -> int:
-    """获取平台层级 - 改进版"""
+    """获取平台层级（保守判定，避免误把普通媒体升为 Tier1）"""
     p = str(platform or "").lower().strip()
     # 去除可能的域名后缀
     p_clean = p.replace(".", "_").replace("-", "_")
@@ -77,21 +77,13 @@ def _get_platform_tier(platform: str) -> int:
     if p in TIER1_PLATFORMS or p_clean in TIER1_PLATFORMS:
         return 1
     
-    # 精确匹配 Tier2
-    if p in TIER2_PLATFORMS or p_clean in TIER2_PLATFORMS:
-        return 2
-    
-    # 模糊匹配 - 检查是否包含官方关键词
-    official_markers = ["xinhua", "news", "gov", "official", "olympic",
-                       "people", "cctv", "chinanews", "china", "cri", "cnr",
-                       "xinhuanet", "peoples_daily", "ifeng", "caixin", "thepaper", 
-                       "athletic", "cdc", "who", "sec", "reuters", "bbc"]
-    if any(m in p for m in official_markers):
-        return 1
-    
-    # 社交媒体关键词
+    # 社交媒体关键词（默认保持为 Tier3，避免误入“高阶证据”）
     social_markers = ["weibo", "zhihu", "douyin", "xiaohongshu", "bilibili"]
     if any(m in p for m in social_markers):
+        return 3
+
+    # 精确匹配 Tier2
+    if p in TIER2_PLATFORMS or p_clean in TIER2_PLATFORMS:
         return 2
     
     return 3
@@ -220,8 +212,8 @@ class StrongVerdictGate:
             gate_passed = False
             gate_reasons.append("INSUFFICIENT_PRIMARY_EVIDENCE")
         
-        # 改进：如果有 Tier1 平台，则放宽平台覆盖要求
-        if len(high_tier_platforms) < 1:
+        # 高层证据应至少覆盖 2 个平台
+        if len(high_tier_platforms) < 2:
             gate_passed = False
             gate_reasons.append("LOW_HIGH_TIER_PLATFORM_COVERAGE")
         
@@ -229,35 +221,30 @@ class StrongVerdictGate:
             gate_passed = False
             gate_reasons.append("CONFLICTING_HIGH_TIER_EVIDENCE")
 
-        # 改进：如果有 Tier1 官方源支持，可以覆盖门槛
         support_count = int(stance_summary.get("support", 0))
         refute_count = int(stance_summary.get("refute", 0))
-        
         tier1_support = [r for r in tier1_rows if str(r.get("stance")) == "support"]
-        
-        # 如果有 Tier1 官方源支持，放宽门槛
-        if tier1_support and not high_refute:
-            if not gate_passed and "NO_LINKED_EVIDENCE" not in gate_reasons:
-                gate_passed = True
-                gate_reasons.append("TIER1_OFFICIAL_SUPPORT_OVERRIDE")
-        
-        # 多数支持覆盖
-        dominant_support_override = (
+
+        # 有限高阶证据下的强支持覆盖（仅允许覆盖“证据不足类”软门槛）
+        limited_high_tier_strong_support = (
             (not gate_passed)
             and support_count >= 5
             and refute_count == 0
             and len(rows) >= 5
-            and len(support_platforms) >= 2
+            and (len(support_platforms) >= 2 or len(tier1_support) >= 1)
         )
-        if dominant_support_override:
+        if limited_high_tier_strong_support:
             soft_only_reasons = {
                 "INSUFFICIENT_HIGH_TIER_EVIDENCE",
                 "LOW_HIGH_TIER_PLATFORM_COVERAGE",
                 "DOMAIN_SOURCE_MISMATCH",
             }
-            if set(gate_reasons).issubset(soft_only_reasons):
+            effective_reasons = {r for r in gate_reasons if not str(r).startswith("TIER")}
+            if effective_reasons and effective_reasons.issubset(soft_only_reasons):
                 gate_passed = True
-                gate_reasons = sorted(list(set(gate_reasons + ["DOMINANT_SUPPORT_OVERRIDE"])))
+                gate_reasons = sorted(
+                    list(set(gate_reasons + ["LIMITED_HIGH_TIER_STRONG_SUPPORT"]))
+                )
 
         # 判定结论
         if gate_passed:
@@ -286,22 +273,16 @@ class StrongVerdictGate:
         else:
             score = max(support_weight, refute_weight) / denom
 
-        # 根据证据质量调整分数 - 大幅提高 Tier1 官方媒体加分
+        # 根据证据质量调整分数 - Tier1 官方媒体加分
         tier1_support_count = len(tier1_support)
         if tier1_support_count > 0:
             # 每个 Tier1 官方源加分 0.12，多个叠加最高加 0.40
             bonus = min(0.40, 0.12 * tier1_support_count)
             score = min(1.0, score + bonus)
 
-        # 修改：当有 Tier1 官方媒体支持时，取消 UNCERTAIN/REVIEW_REQUIRED 的上限限制
-        if verdict in {"UNCERTAIN", "REVIEW_REQUIRED"} and not tier1_support:
-            score = min(score, 0.65)
-        elif verdict in {"UNCERTAIN", "REVIEW_REQUIRED"} and tier1_support:
-            # 有 Tier1 支持但仍有不确定性时，根据 Tier1 数量保底
-            if tier1_support_count >= 2:
-                score = max(score, 0.75)  # 多个 Tier1 至少 0.75
-            else:
-                score = max(score, 0.65)
+        # 不确定/需复核结论严格限幅，避免“高分但不确定”
+        if verdict in {"UNCERTAIN", "REVIEW_REQUIRED"}:
+            score = min(score, 0.59)
 
         score = round(max(0.0, min(1.0, score)), 4)
 

@@ -178,11 +178,16 @@ test('program flow triggers review gate and my workspace replay', async ({ page 
   await page.goto('/')
   await page.getByTestId('claim-input').fill('这是一条待核查主张')
   await page.getByTestId('start-run').click()
+  await expect(page.getByText('预分析确认')).toBeVisible()
+  await page.locator('.confirm-check input[type="checkbox"]').check()
+  await page.getByRole('button', { name: '确认并继续' }).click()
 
+  await page.getByRole('button', { name: '任务管理' }).click()
   await expect(page.getByText('需人工复核')).toBeVisible({ timeout: 10000 })
   await expect(page.getByRole('heading', { name: '结论阶段' })).toBeVisible()
 
-  await page.getByRole('button', { name: '我的' }).click()
+  await page.getByRole('button', { name: '历史档案' }).click()
+  await expect(page.getByRole('heading', { name: '我的待办' })).toBeVisible()
   await expect(page.getByText('历史报告-测试')).toBeVisible()
   await expect(page.getByText('运行结论：UNCERTAIN')).toBeVisible()
 

@@ -788,10 +788,17 @@ class SiliconFlowClient:
 
         timeout_sec = max(6, int(getattr(settings, "LLM_READ_TIMEOUT", 60) or 60))
 
-        async def _call_candidates() -> tuple[Any, str, bool]:
+        async def _call_candidates() -> tuple[Any, str, Optional[bool]]:
             nonlocal last_error
+            # 兼容测试场景：若外部替换了 self.client，则优先使用该实例，避免真实网络调用
+            client_candidates: List[tuple[Any, Optional[bool]]] = []
+            patched_client = getattr(self, "client", None)
+            if patched_client is not None:
+                client_candidates.append((patched_client, None))
             for trust_env in self._trust_env_candidates:
-                client = self._clients[trust_env]
+                client_candidates.append((self._clients[trust_env], trust_env))
+
+            for client, trust_env in client_candidates:
                 for model_name in candidates:
                     try:
                         response = await asyncio.wait_for(
@@ -808,7 +815,7 @@ class SiliconFlowClient:
                         last_error = e
                         logger.warning(
                             "SiliconFlow model timeout: "
-                            f"{model_name} trust_env={int(bool(trust_env))} "
+                            f"{model_name} trust_env={int(bool(trust_env)) if trust_env is not None else 'patched'} "
                             f"after {timeout_sec}s"
                         )
                         continue
@@ -817,7 +824,7 @@ class SiliconFlowClient:
                         err_text = str(e)
                         logger.warning(
                             "SiliconFlow model unavailable: "
-                            f"{model_name} trust_env={int(bool(trust_env))} -> {err_text}"
+                            f"{model_name} trust_env={int(bool(trust_env)) if trust_env is not None else 'patched'} -> {err_text}"
                         )
             raise RuntimeError(f"All SiliconFlow models failed: {last_error}")
 

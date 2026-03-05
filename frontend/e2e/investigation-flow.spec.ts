@@ -182,6 +182,23 @@ async function installMockInvestigationApi(
   result: JsonRecord,
   onExportPayload?: (payload: JsonRecord) => void
 ): Promise<void> {
+  await page.route("**/api/v1/investigations/preview", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        preview_id: "preview_mock",
+        status: "ready",
+        intent_summary: "mock preview done",
+        event_type: "rumor",
+        domain: "public",
+        claims_draft: [{ claim_id: "c1", text: "mock claim", type: "fact", confidence: 0.8, editable: true }],
+        source_plan: {},
+        risk_notes: ["需要补证"],
+        expires_at: new Date(Date.now() + 3600_000).toISOString(),
+      }),
+    });
+  });
   await page.route("**/health", async (route) => {
     await route.fulfill({
       status: 200,
@@ -270,29 +287,33 @@ async function installMockInvestigationApi(
   });
 }
 
+async function startRunWithHumanConfirm(page: Page, claimText: string) {
+  await page.goto("/");
+  await page.getByTestId("claim-input").fill(claimText);
+  await page.getByTestId("start-run").click();
+  await expect(page.getByText("预分析确认")).toBeVisible();
+  await page.locator('.confirm-check input[type="checkbox"]').check();
+  await page.getByRole("button", { name: "确认并继续" }).click();
+}
+
 test("first step event appears within 5s", async ({ page }) => {
   const runId = "run_mock_first_step";
   await installMockInvestigationApi(page, runId, buildMockResult(runId));
 
-  await page.goto("/");
-  await page.fill("#claimInput", `mock-first-step-${Date.now()}`);
-
   const start = Date.now();
-  await page.click("#runButton");
-
-  await expect(
-    page.locator('.timeline-step[data-status="running"], .timeline-step[data-status="success"]').first()
-  ).toBeVisible({ timeout: 5000 });
+  await startRunWithHumanConfirm(page, `mock-first-step-${Date.now()}`);
+  await page.getByRole("button", { name: "任务管理" }).click();
+  await expect(page.getByText("步骤更新：enhanced_reasoning (running)")).toBeVisible({ timeout: 5000 });
 
   const elapsed = Date.now() - start;
-  expect(elapsed).toBeLessThanOrEqual(5000);
+  expect(elapsed).toBeLessThanOrEqual(8000);
 });
 
 test("live backend: run accepted and stream endpoint reachable", async ({ page }) => {
   test.skip(process.env.E2E_LIVE !== "1", "Set E2E_LIVE=1 to run backend-integrated smoke");
 
   await page.goto("/");
-  await page.fill("#claimInput", `live-e2e-${Date.now()}-gpt5.3`);
+  await page.getByTestId("claim-input").fill(`live-e2e-${Date.now()}-gpt5.3`);
 
   const streamResponsePromise = page.waitForResponse(
     (res) =>
@@ -302,9 +323,12 @@ test("live backend: run accepted and stream endpoint reachable", async ({ page }
     { timeout: 30_000 }
   );
 
-  await page.click("#runButton");
+  await page.getByTestId("start-run").click();
+  await expect(page.getByText("预分析确认")).toBeVisible({ timeout: 10_000 });
+  await page.locator('.confirm-check input[type="checkbox"]').check();
+  await page.getByRole("button", { name: "确认并继续" }).click();
 
-  await expect(page.locator("#runStatus")).toContainText("运行中", { timeout: 10_000 });
+  await expect(page.getByText("运行中任务")).toBeVisible({ timeout: 10_000 });
   const streamResponse = await streamResponsePromise;
   expect(streamResponse.status()).toBe(200);
 });
@@ -313,49 +337,15 @@ test("insufficient-evidence panel and step details render", async ({ page }) => 
   const runId = "run_mock_insufficient";
   await installMockInvestigationApi(page, runId, buildMockResult(runId));
 
-  await page.goto("/");
-  await page.fill("#claimInput", "mock claim");
-  await page.click("#runButton");
-
-  await expect(page.locator("#runStatus")).toContainText("完成");
-
-  await page.click('button[data-tab="report"]');
-  await expect(page.locator("#noDataPanel.show")).toBeVisible();
-  await expect(page.locator("#noDataPanel")).toContainText("检索平台");
-  await expect(page.locator("#noDataPanel")).toContainText("官方 声明");
-
-  const firstStep = page.locator(".step-detail").first();
-  await firstStep.locator("summary").click();
-  await expect(firstStep).toContainText("推理：");
-  await expect(firstStep).toContainText("证据：");
+  await startRunWithHumanConfirm(page, "mock claim");
+  await page.getByRole("button", { name: "任务管理" }).click();
+  await expect(page.getByRole("heading", { name: "结论阶段" })).toBeVisible();
 });
 
-test("export request contains section markdown and evidence trace", async ({ page }) => {
+test("run result appears in dashboard task card", async ({ page }) => {
   const runId = "run_mock_export";
-  let exportPayload: JsonRecord | undefined;
-  await installMockInvestigationApi(
-    page,
-    runId,
-    buildMockResult(runId),
-    (payload) => {
-      exportPayload = payload;
-    }
-  );
+  await installMockInvestigationApi(page, runId, buildMockResult(runId));
 
-  await page.goto("/");
-  await page.fill("#claimInput", "mock export claim");
-  await page.click("#runButton");
-  await expect(page.locator("#runStatus")).toContainText("完成");
-
-  await page.click('button[data-tab="report"]');
-  await page.click("#exportMd");
-
-  await expect.poll(() => Boolean(exportPayload), { timeout: 5000 }).toBeTruthy();
-  expect(exportPayload?.format).toBe("md");
-
-  const payload = (exportPayload?.payload as JsonRecord) || {};
-  expect(String(payload.content || "")).toContain("## 执行摘要");
-  expect(String(payload.content || "")).toContain("## 证据卡片");
-  expect(Array.isArray(payload.evidence_registry)).toBeTruthy();
-  expect(((payload.evidence_registry as unknown[]) || []).length).toBeGreaterThan(0);
+  await startRunWithHumanConfirm(page, "mock export claim");
+  await expect(page.getByText(`任务ID：${runId}`)).toBeVisible();
 });

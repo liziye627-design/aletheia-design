@@ -1943,6 +1943,7 @@ class CrawlerManager:
                         f"{platform}: mediacrawler degraded ({sidecar_diag['error']})"
                     )
 
+            pre_keyword_gate_results = list(results or [])
             # 统一关键词门禁：防止某些平台分支直接返回热榜/通用流。
             if results:
                 results = self._filter_items_by_keyword_with_fallback(
@@ -1952,6 +1953,13 @@ class CrawlerManager:
                     limit=limit,
                     allow_hot_fallback=(not strict_search_only),
                 )
+                # sidecar 失败时允许软降级返回 native 兜底，避免完全空集
+                if (
+                    (not results)
+                    and bool(sidecar_diag.get("degraded"))
+                    and pre_keyword_gate_results
+                ):
+                    results = pre_keyword_gate_results[:limit]
 
             if results:
                 logger.info(f"✅ {platform}: found {len(results)} posts for '{keyword}'")
