@@ -349,7 +349,7 @@ value = settings.YOUR_VARIABLE
 - [故障排除指南](TROUBLESHOOTING.md)
 - [后端README](aletheia-backend/README.md)
 - [前端README](frontend/README.md)
-- [API设计文档](.kiro/specs/backend-frontend-integration/design.md)
+- [API设计文档](../../archive/.kiro/specs/backend-frontend-integration/design.md)
 
 ## 💡 提示
 

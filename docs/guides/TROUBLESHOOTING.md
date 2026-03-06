@@ -544,7 +544,7 @@ ps aux | grep node
 
 1. 查看项目问题清单: `changes/CHANGELOG.md`
 2. 查看API文档: http://localhost:8000/docs
-3. 阅读设计文档: `.kiro/specs/backend-frontend-integration/design.md`
+3. 阅读设计文档: `archive/.kiro/specs/backend-frontend-integration/design.md`
 4. 联系开发团队
 
 ## 💡 预防性维护
