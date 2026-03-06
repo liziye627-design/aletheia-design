@@ -203,12 +203,32 @@ echo -e "${YELLOW}🚀 启动前端服务...${NC}"
 cd "$PROJECT_ROOT/frontend"
 
 # 启动前端（后台运行，避免无TTY退出）
-setsid npm run dev > "$FRONTEND_LOG_FILE" 2>&1 < /dev/null &
+setsid npm run dev -- --host 0.0.0.0 > "$FRONTEND_LOG_FILE" 2>&1 < /dev/null &
 FRONTEND_LAUNCH_PID=$!
 
 # 等待前端就绪并解析实际监听PID
 echo -e "${YELLOW}⏳ 等待前端服务就绪...${NC}"
-sleep 2
+FRONTEND_RETRIES=0
+FRONTEND_MAX_RETRIES=30
+
+while [ $FRONTEND_RETRIES -lt $FRONTEND_MAX_RETRIES ]; do
+    if curl -s http://localhost:5173 > /dev/null 2>&1; then
+        break
+    fi
+
+    FRONTEND_RETRIES=$((FRONTEND_RETRIES + 1))
+    sleep 1
+done
+
+if [ $FRONTEND_RETRIES -eq $FRONTEND_MAX_RETRIES ]; then
+    echo -e "${RED}❌ 错误: 前端服务启动超时${NC}"
+    echo -e "${YELLOW}💡 请查看日志: $FRONTEND_LOG_FILE${NC}"
+    if [ -n "$FRONTEND_LAUNCH_PID" ]; then
+        kill "$FRONTEND_LAUNCH_PID" 2>/dev/null || true
+    fi
+    exit 1
+fi
+
 FRONTEND_PID=$(lsof -t -iTCP:5173 -sTCP:LISTEN 2>/dev/null | head -n 1)
 if [ -z "$FRONTEND_PID" ]; then
     FRONTEND_PID=$FRONTEND_LAUNCH_PID

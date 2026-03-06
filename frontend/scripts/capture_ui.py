@@ -1,14 +1,27 @@
-from playwright.sync_api import sync_playwright
+import subprocess
+from pathlib import Path
+
+
+PROJECT_ROOT = Path("/home/llwxy/aletheia/design/frontend")
+OUTPUT_PATH = PROJECT_ROOT / "ui-current.png"
 
 
 def main():
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page(viewport={"width": 1366, "height": 860})
-        page.goto("http://localhost:5173", wait_until="networkidle")
-        page.wait_for_timeout(1000)
-        page.screenshot(path="/home/llwxy/aletheia/design/frontend/ui-current.png", full_page=True)
-        browser.close()
+    script = f"""
+import {{ chromium }} from '@playwright/test';
+
+const browser = await chromium.launch({{ headless: true }});
+const page = await browser.newPage({{ viewport: {{ width: 1366, height: 860 }} }});
+await page.goto('http://localhost:5173', {{ waitUntil: 'networkidle' }});
+await page.waitForTimeout(1000);
+await page.screenshot({{ path: '{OUTPUT_PATH}', fullPage: true }});
+await browser.close();
+"""
+    subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=PROJECT_ROOT,
+        check=True,
+    )
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ except Exception as fusion_import_error:
     get_fusion_service = None
     _fusion_import_error = fusion_import_error
 from utils.logging import logger
+from services.rss_hot_focus_service import get_rss_hot_focus_service
 from services.layer1_perception.agents import (
     ConcurrentAgentManager,
     BilibiliAgent,
@@ -93,6 +94,12 @@ class MultiPlatformHotTopicsRequest(BaseModel):
     limit_per_platform: int = Field(
         20, ge=1, le=100, description="每个平台返回数量", example=20
     )
+
+
+class HotFocusRequest(BaseModel):
+    """今日传播重点请求"""
+
+    refresh: bool = Field(False, description="是否强制刷新快照")
 
 
 class MultiPlatformSearchRequest(BaseModel):
@@ -315,6 +322,29 @@ async def get_multi_platform_hot_topics(request: MultiPlatformHotTopicsRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch hot topics: {str(e)}",
+        )
+
+
+@router.post("/hot-focus", status_code=status.HTTP_200_OK)
+async def get_hot_focus_snapshot(request: HotFocusRequest):
+    """
+    获取处理后的今日传播重点快照
+
+    流程:
+    - 聚合 RSS 多源候选
+    - 标准化与去重
+    - 按类别和新鲜度排序
+    - 返回首页摘要与详情页列表
+    """
+    try:
+        service = await get_rss_hot_focus_service()
+        payload = await service.build_snapshot(refresh=bool(request.refresh))
+        return {"success": True, **payload}
+    except Exception as e:
+        logger.error(f"❌ Failed to build hot focus snapshot: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to build hot focus snapshot: {str(e)}",
         )
 
 

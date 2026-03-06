@@ -47,6 +47,7 @@ Thumbs.db
 /assets/
 /slide-deck/
 /changes/
+/archive/core-components/
 
 # Binary design artifacts
 *.pen

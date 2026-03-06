@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  fetchHotFocus,
   getInvestigationResult,
   getReportById,
   generateGeoReport,
   generatePublishSuggestions,
+  type HotFocusItem,
+  type HotFocusSection,
   listReports,
   previewInvestigation,
   runInvestigation,
@@ -29,8 +32,47 @@ import { useProgramStore, mapStepIdToPhase } from './store/programStore'
 import type { LogItem, ProgramPhase } from './types/runtime'
 
 const defaultPlatforms = ['weibo', 'xinhua', 'news', 'xiaohongshu', 'zhihu']
+const fallbackHotFocusTopics: HotFocusTopic[] = [
+  {
+    id: 'fallback-1',
+    title: '权威政策与监管更新持续占据关注入口',
+    url: '',
+    source_name: 'RSS 观察池',
+    source_id: 'fallback',
+    group_name: '本地摘要',
+    category: '政策 / 监管',
+    published_at: '',
+    summary: '适合优先核查政策口径、执行边界与误读风险，避免 AI 将旧政策或二手解读当作最新事实。',
+    score: 0,
+  },
+  {
+    id: 'fallback-2',
+    title: '国际新闻与突发事件仍是 AI 引用链路中的高频源',
+    url: '',
+    source_name: 'RSS 观察池',
+    source_id: 'fallback',
+    group_name: '本地摘要',
+    category: '国际 / 突发',
+    published_at: '',
+    summary: '适合优先补齐时间线与原始信源，防止摘要转载在 AI 回答中不断放大。',
+    score: 0,
+  },
+  {
+    id: 'fallback-3',
+    title: '公共议题更需要“可引用结论”而不是热度描述',
+    url: '',
+    source_name: 'RSS 观察池',
+    source_id: 'fallback',
+    group_name: '本地摘要',
+    category: '传播 / GEO',
+    published_at: '',
+    summary: '编辑层应把热点拆解成可验证主张、证据链接和发布日期，方便 GEO 输出进入 AI 检索入口。',
+    score: 0,
+  },
+]
 type ConsoleSection =
   | 'dashboard'
+  | 'focus'
   | 'tasks'
   | 'analysis'
   | 'conclusions'
@@ -101,6 +143,15 @@ function buildEvidenceDisplayLogs(rawLogs: LogItem[]): LogItem[] {
   const merged = [...evidenceLogs, ...nonEvidenceLogs]
   return merged.slice(0, 120)
 }
+
+function formatDateTime(value: string) {
+  if (!value) return '时间未知'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '时间未知'
+  return date.toLocaleString('zh-CN')
+}
+
+type HotFocusTopic = HotFocusItem
 
 function MyWorkspace({
   result,
@@ -239,6 +290,15 @@ function App() {
   const [isBusy, setIsBusy] = useState(false)
   const [error, setError] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [hotFocusSummaryItems, setHotFocusSummaryItems] = useState<HotFocusTopic[]>(fallbackHotFocusTopics)
+  const [hotFocusTopics, setHotFocusTopics] = useState<HotFocusTopic[]>(fallbackHotFocusTopics)
+  const [hotFocusSections, setHotFocusSections] = useState<HotFocusSection[]>([])
+  const [hotFocusLoading, setHotFocusLoading] = useState(false)
+  const [hotFocusError, setHotFocusError] = useState('')
+  const [hotFocusUpdatedAt, setHotFocusUpdatedAt] = useState('')
+  const [hotFocusSourceCount, setHotFocusSourceCount] = useState(0)
+  const [hotFocusCandidateCount, setHotFocusCandidateCount] = useState(0)
   const [replayResult, setReplayResult] = useState<InvestigationRunResult | null>(null)
   const [activeSection, setActiveSection] = useState<ConsoleSection>('dashboard')
   const [humanConfirmChecked, setHumanConfirmChecked] = useState(false)
@@ -297,6 +357,55 @@ function App() {
     conclusion: null,
   })
   const evidenceLogRef = useRef<HTMLUListElement | null>(null)
+  const hotFocusRequestRef = useRef<AbortController | null>(null)
+
+  const loadHotFocus = useCallback((refresh: boolean, timeoutMs: number) => {
+    hotFocusRequestRef.current?.abort()
+    const ctrl = new AbortController()
+    hotFocusRequestRef.current = ctrl
+    const timeoutId = window.setTimeout(() => ctrl.abort(), timeoutMs)
+    setHotFocusLoading(true)
+    setHotFocusError('')
+    void fetchHotFocus(refresh, ctrl.signal)
+      .then((resp) => {
+        const rows = Array.isArray(resp.detail_items) ? resp.detail_items : []
+        const summaryRows = Array.isArray(resp.summary_items) && resp.summary_items.length
+          ? resp.summary_items
+          : rows.slice(0, 3)
+        if (rows.length) {
+          const mergedRows = [...rows]
+          const mergedSummaryRows = [...summaryRows]
+          for (const fallback of fallbackHotFocusTopics) {
+            if (mergedSummaryRows.length < 3) mergedSummaryRows.push(fallback)
+            if (mergedRows.length < 3) mergedRows.push(fallback)
+          }
+          setHotFocusSummaryItems(mergedSummaryRows.slice(0, 3))
+          setHotFocusTopics(mergedRows)
+          setHotFocusSections(Array.isArray(resp.sections) ? resp.sections : [])
+          setHotFocusUpdatedAt(resp.updated_at || new Date().toISOString())
+          setHotFocusSourceCount(Number(resp.source_count || 0))
+          setHotFocusCandidateCount(Number(resp.candidate_count || 0))
+        }
+      })
+      .catch((error) => {
+        if (ctrl.signal.aborted) return
+        setHotFocusError(error instanceof Error ? error.message : '热点资讯加载失败')
+      })
+      .finally(() => {
+        window.clearTimeout(timeoutId)
+        if (hotFocusRequestRef.current === ctrl) {
+          hotFocusRequestRef.current = null
+        }
+        setHotFocusLoading(false)
+      })
+    return () => {
+      window.clearTimeout(timeoutId)
+      ctrl.abort()
+      if (hotFocusRequestRef.current === ctrl) {
+        hotFocusRequestRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const ref = phaseRefs.current[currentPhase]
@@ -312,6 +421,16 @@ function App() {
       .catch(() => undefined)
     return () => ctrl.abort()
   }, [setReportHistory])
+
+  useEffect(() => {
+    const startId = window.setTimeout(() => {
+      loadHotFocus(false, 6000)
+    }, 15000)
+    return () => {
+      window.clearTimeout(startId)
+      hotFocusRequestRef.current?.abort()
+    }
+  }, [loadHotFocus])
 
   useEffect(() => {
     const logList = evidenceLogRef.current
@@ -341,6 +460,24 @@ function App() {
       eventCount: streamEvents.length,
     }
   }, [result, runStatus, streamEvents.length])
+
+  const dashboardBrief = useMemo(() => {
+    const claimAnalysis = (result?.claim_analysis || {}) as Record<string, unknown>
+    const opinion = ((result?.opinion_monitoring || {}) as Record<string, unknown>)
+    const runtimeOpinion = opinionRuntime || opinion
+    const suspiciousPct = Math.round(Number(runtimeOpinion.suspicious_ratio || 0) * 100)
+    const realPct = Math.round(Number(runtimeOpinion.real_comment_ratio || 0) * 100)
+    const verdict = String(claimAnalysis.run_verdict || 'UNCERTAIN')
+    const evidenceCount = summaryBars[2]?.value ?? 0
+    return {
+      verdict,
+      evidenceCount,
+      suspiciousPct,
+      realPct,
+      riskLevel: String(runtimeOpinion.risk_level || 'unknown').toUpperCase(),
+      claimCount: Array.isArray(claimAnalysis.claims) ? claimAnalysis.claims.length : 0,
+    }
+  }, [result, opinionRuntime, summaryBars])
 
   const freshnessText = useMemo(() => {
     if (freshness.status === 'FRESH' || freshness.status === 'RECENT') return `信息时效正常（最近证据：${freshness.latest_evidence_at || '未知'}）`
@@ -378,6 +515,37 @@ function App() {
       .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
       .slice(-6)
   }, [phaseLogs])
+  const focusSummaryCards = useMemo(() => {
+    return hotFocusSummaryItems.slice(0, 3).map((topic, idx) => ({
+      id: topic.id,
+      label: `传播重点 0${idx + 1}`,
+      title: topic.title,
+      summary: topic.summary,
+      meta: `${topic.source_name} · ${topic.category}`,
+    }))
+  }, [hotFocusSummaryItems])
+  const navItems: Array<{ key: ConsoleSection; label: string; short: string; note: string }> = [
+    { key: 'dashboard', label: '控制台', short: '控', note: '总览' },
+    { key: 'tasks', label: '任务管理', short: '任', note: '流程' },
+    { key: 'analysis', label: '分析中心', short: '析', note: '证据' },
+    { key: 'conclusions', label: '结论管理', short: '结', note: '发布' },
+    { key: 'archives', label: '历史档案', short: '档', note: '回放' },
+    { key: 'settings', label: '系统设置', short: '设', note: '诊断' },
+  ]
+  const publishReadiness = useMemo(() => {
+    const reviewStatus = reviewGate.required ? `需要 ${reviewGate.priority.toUpperCase()} 级复核` : '无需人工复核'
+    const evidenceStatus = verificationChecklist.length ? `${verificationChecklist.length} 条可引用证据` : '暂无可引用证据'
+    const geoStatus = geoReport ? 'GEO 报告已生成' : '尚未生成 GEO 报告'
+    const tweetStatus = publishSuggestions?.tweet_suggestions?.length
+      ? `${publishSuggestions.tweet_suggestions.length} 条对外口径候选`
+      : '尚未生成对外口径'
+    return [
+      { label: '复核状态', value: reviewStatus, tone: reviewGate.required ? 'warning' : 'success' },
+      { label: '证据引用', value: evidenceStatus, tone: verificationChecklist.length ? 'success' : 'neutral' },
+      { label: 'GEO 输出', value: geoStatus, tone: geoReport ? 'success' : 'neutral' },
+      { label: '传播草案', value: tweetStatus, tone: publishSuggestions?.tweet_suggestions?.length ? 'success' : 'neutral' },
+    ]
+  }, [reviewGate, verificationChecklist.length, geoReport, publishSuggestions])
 
   async function openHistoryReport(reportId: string) {
     setError('')
@@ -900,36 +1068,48 @@ function App() {
   const todayCompleted = reportHistory.length
 
   return (
-    <div className="console-root">
+    <div className={cn('console-root', sidebarCollapsed && 'sidebar-collapsed')}>
       <aside className="console-sidebar">
-        <div className="brand-block">
+        <div className="sidebar-header">
+          <div className="brand-block">
           <div className="brand-mark" />
-          <div>
+          <div className="brand-copy">
             <h1>Aletheia</h1>
             <p>Newsroom Truth Console</p>
           </div>
         </div>
+          <button
+            type="button"
+            className="sidebar-toggle"
+            aria-label={sidebarCollapsed ? '展开侧栏' : '折叠侧栏'}
+            onClick={() => setSidebarCollapsed((prev) => !prev)}
+          >
+            {sidebarCollapsed ? '»' : '«'}
+          </button>
+        </div>
 
         <nav className="console-nav">
-          <button type="button" className={cn('nav-item', activeSection === 'dashboard' && 'is-active')} onClick={() => setActiveSection('dashboard')}>
-            控制台
-          </button>
-          <button type="button" className={cn('nav-item', activeSection === 'tasks' && 'is-active')} onClick={() => setActiveSection('tasks')}>
-            任务管理
-          </button>
-          <button type="button" className={cn('nav-item', activeSection === 'analysis' && 'is-active')} onClick={() => setActiveSection('analysis')}>
-            分析中心
-          </button>
-          <button type="button" className={cn('nav-item', activeSection === 'conclusions' && 'is-active')} onClick={() => setActiveSection('conclusions')}>
-            结论管理
-          </button>
-          <button type="button" className={cn('nav-item', activeSection === 'archives' && 'is-active')} onClick={() => setActiveSection('archives')}>
-            历史档案
-          </button>
-          <button type="button" className={cn('nav-item', activeSection === 'settings' && 'is-active')} onClick={() => setActiveSection('settings')}>
-            系统设置
-          </button>
+          {navItems.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className={cn('nav-item', activeSection === item.key && 'is-active')}
+              onClick={() => setActiveSection(item.key)}
+            >
+              <span className="nav-badge">{item.short}</span>
+              <span className="nav-copy">
+                <strong>{item.label}</strong>
+                <small>{item.note}</small>
+              </span>
+            </button>
+          ))}
         </nav>
+
+        <div className="sidebar-footer panel-card">
+          <span className="sidebar-footer-label">当前运行</span>
+          <strong>{runOverview.runStatus}</strong>
+          <p>{reviewGate.required ? '存在需要人工判断的结论门槛。' : '当前链路可自动推进到发布阶段。'}</p>
+        </div>
       </aside>
 
       <div className="console-body">
@@ -955,10 +1135,112 @@ function App() {
           {activeSection === 'dashboard' && (
             <section className="dashboard-grid">
               <div className="dashboard-main">
+                <section className="hero-panel panel-card">
+                  <div className="hero-copy">
+                    <span className="hero-kicker">Truth Infrastructure for AI Era</span>
+                    <h2>在 AI 大量制造虚假信息的时代，把真实性保障变成可执行系统。</h2>
+                    <p>
+                      Aletheia 面向企业、政府和新闻机构，提供从预分析、自动选源、跨平台核验到 GEO
+                      传播输出的一体化工作台，让高可信资讯优先进入 AI 的回答链路，而不是被噪声占据。
+                    </p>
+                    <div className="hero-chip-row">
+                      <span className="chip">反 AI 造假</span>
+                      <span className="chip">舆情风险预警</span>
+                      <span className="chip">GEO 内容分发</span>
+                      <span className="chip">新闻工作流升级</span>
+                    </div>
+                  </div>
+                  <div className="hero-aside">
+                    <article className="hero-stat-card">
+                      <span>当前结论</span>
+                      <strong>{dashboardBrief.verdict}</strong>
+                      <p>最近一次核验的主张级判定结果</p>
+                    </article>
+                    <article className="hero-stat-card">
+                      <span>风险态势</span>
+                      <strong>{dashboardBrief.riskLevel}</strong>
+                      <p>可疑占比 {dashboardBrief.suspiciousPct}% · 真实评论占比 {dashboardBrief.realPct}%</p>
+                    </article>
+                    <article className="hero-stat-card">
+                      <span>核验产出</span>
+                      <strong>{dashboardBrief.evidenceCount}</strong>
+                      <p>证据条数 · {dashboardBrief.claimCount} 条主张进入判定链路</p>
+                    </article>
+                  </div>
+                </section>
+
+                <section className="dashboard-focus-grid">
+                  <article className="panel-card value-card">
+                    <div className="panel-head">
+                      <h3>今日传播重点</h3>
+                      <div className="head-inline">
+                        <span>RSS 热点摘要</span>
+                        <button
+                          type="button"
+                          className="ghost-btn mini"
+                          onClick={() => {
+                            setActiveSection('focus')
+                            if (hotFocusTopics.length < 6 && !hotFocusLoading) {
+                              loadHotFocus(true, 12000)
+                            }
+                          }}
+                        >
+                          查看更多
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mission-summary">
+                      基于 RSS 热点源提炼今日值得优先核验与传播管理的议题。{hotFocusUpdatedAt ? `最近更新：${formatDateTime(hotFocusUpdatedAt)}` : '当前使用本地观察口径。'}
+                    </p>
+                    <div className="value-list">
+                      {focusSummaryCards.map((item) => (
+                        <div key={item.id} className="value-item focus-item">
+                          <span className="focus-label">{item.label}</span>
+                          <strong>{item.title}</strong>
+                          <p>{item.summary}</p>
+                          <small>{item.meta}</small>
+                        </div>
+                      ))}
+                    </div>
+                    {hotFocusLoading && <p className="hint-text">正在加载 RSS 热点摘要…</p>}
+                    {hotFocusError && <p className="hint-text">热点接口较慢，当前先展示本地摘要口径。</p>}
+                  </article>
+
+                  <article className="panel-card mission-card">
+                    <div className="panel-head">
+                      <h3>当前运行态势</h3>
+                      <span>Mission Brief</span>
+                    </div>
+                    <div className="brief-matrix">
+                      <div>
+                        <span>运行状态</span>
+                        <strong>{runOverview.runStatus}</strong>
+                      </div>
+                      <div>
+                        <span>流事件</span>
+                        <strong>{runOverview.eventCount}</strong>
+                      </div>
+                      <div>
+                        <span>时效状态</span>
+                        <strong>{freshness.status}</strong>
+                      </div>
+                      <div>
+                        <span>人工复核</span>
+                        <strong>{reviewGate.required ? reviewGate.priority.toUpperCase() : 'NONE'}</strong>
+                      </div>
+                    </div>
+                    <p className="mission-summary">{freshnessText}</p>
+                    <div className="mission-ribbon">
+                      <span>当前主张</span>
+                      <strong>{claim.trim() ? truncateText(claim.trim(), 110) : '输入需要核验的主张后，系统会自动规划权威媒体与社交信源。'}</strong>
+                    </div>
+                  </article>
+                </section>
+
                 <section className="panel-card input-card">
                   <div className="panel-head">
                     <h3>主张核验控制台</h3>
-                    <span>预分析 → 采集 → 核验 → 结论</span>
+                    <span>预分析 → 采集 → 核验 → 结论 → GEO 输出</span>
                   </div>
                   <textarea
                     data-testid="claim-input"
@@ -1118,181 +1400,406 @@ function App() {
             </section>
           )}
 
-          {activeSection === 'tasks' && (
-            <section className="panel-card task-detail">
-              <div className="panel-head">
-                <h3>任务详情</h3>
-                <span>流程可视化</span>
-              </div>
-              <ReviewGateBanner gate={reviewGate} />
-              {showTimeline ? (
-                <ProgramTimeline
-                  current={currentPhase}
-                  phases={phaseNodes}
-                  onSelect={(phase) => setCurrentPhase(phase)}
-                />
-              ) : (
-                <article className="panel-card empty-state">
-                  <p className="stage-summary">阶段时间线将于预分析确认或收到流式输出后出现。</p>
-                </article>
-              )}
-              <article className="panel-card pro-thinking-panel">
-                <div className="panel-head">
-                  <h3>Pro 思考中</h3>
-                  <span>流式执行摘要</span>
+          {activeSection === 'focus' && (
+            <section className="focus-shell">
+              <section className="focus-hero panel-card">
+                <div>
+                  <div className="panel-head">
+                    <h3>今日传播重点 · 详细资讯</h3>
+                    <span>Hidden Briefing</span>
+                  </div>
+                  <p className="stage-summary">这里聚合 RSS 热点源返回的重点资讯，供编辑、审核和传播团队进一步选题、复核与 GEO 编排。</p>
                 </div>
-                {thinkingFeed.length ? (
-                  <ul className="pro-thinking-list">
-                    {thinkingFeed.map((log, idx) => (
-                      <li key={`${log.ts}-${idx}`}>
-                        <span className="pro-thinking-phase">{phaseTitleMap.get(log.phase) || log.phase}</span>
-                        <div>
-                          <p>{log.message}</p>
-                          <small>{new Date(log.ts).toLocaleTimeString('zh-CN')}</small>
-                        </div>
-                      </li>
-                    ))}
+                <div className="head-inline">
+                  <span className="status-chip">{hotFocusTopics.length} 条资讯</span>
+                  <span className="status-chip success">{hotFocusSourceCount} 个信源</span>
+                  <span className="status-chip">{hotFocusCandidateCount} 条候选</span>
+                  <button type="button" className="ghost-btn" onClick={() => loadHotFocus(true, 12000)} disabled={hotFocusLoading}>
+                    {hotFocusLoading ? '加载中…' : '刷新更多资讯'}
+                  </button>
+                  <button type="button" className="ghost-btn" onClick={() => setActiveSection('dashboard')}>
+                    返回控制台
+                  </button>
+                </div>
+              </section>
+
+              <section className="focus-layout">
+                <article className="panel-card focus-summary-board">
+                  <div className="panel-head">
+                    <h3>摘要口径</h3>
+                    <span>Editorial Lens</span>
+                  </div>
+                  <ul className="list-plain compact">
+                    <li>优先关注权威源的新公告、新政策和高传播事件，避免旧文重新包装进入 AI 回答。</li>
+                    <li>热点不直接等于事实，应补齐发布时间、原始链接与引用边界后再进入结论链路。</li>
+                    <li>适合公开传播的内容，需要转化为可验证主张与可引用证据，而不是只有标题热度。</li>
                   </ul>
-                ) : (
-                  <p className="empty-copy">等待流式输出…</p>
-                )}
-              </article>
-              <section className="stage-flow">
-                {phaseNodes.map((phase) => {
-                  const rawLogs = phaseLogs[phase.key] || []
-                  const displayLogs =
-                    phase.key === 'evidence'
-                      ? buildEvidenceDisplayLogs(rawLogs)
-                      : rawLogs.slice(0, 120).reverse()
-                  return (
-                    <div key={phase.key} ref={(el) => { phaseRefs.current[phase.key] = el }}>
-                      <ProgramStageCard
-                        title={phase.title}
-                        status={phase.status}
-                        summary={phase.summary}
-                        actionHint={phase.actionHint}
-                        collapsible
-                        isOpen={openStages[phase.key]}
-                        onToggle={() => setOpenStages((prev) => ({ ...prev, [phase.key]: !prev[phase.key] }))}
-                      >
-                        {phase.key === 'preview' && preview && (
-                          <div className="stage-detail-block">
-                            <p>意图摘要：{preview.intent_summary}</p>
-                            <p>风险提示：{(preview.risk_notes || []).join('；') || '无'}</p>
-                            <p>来源计划：{previewPlatforms.join('、') || '待确认'}</p>
-                            {humanNotes && <p>人工补充：{humanNotes}</p>}
+                </article>
+
+                <section className="focus-feed">
+                  {hotFocusError && <p className="hint-text">热点接口响应较慢，当前先展示可用摘要。稍后可再次刷新。</p>}
+                  {(hotFocusSections.length ? hotFocusSections : [{ category: '综合观察', items: hotFocusTopics }]).map((section) => (
+                    <section key={section.category} className="focus-section-block">
+                      <div className="panel-head">
+                        <h3>{section.category}</h3>
+                        <span>{section.items.length} 条</span>
+                      </div>
+                      {section.items.map((topic, idx) => (
+                        <article key={topic.id} className="panel-card focus-topic-card">
+                          <div className="sub-head">
+                            <h4>{String(idx + 1).padStart(2, '0')} · {topic.title}</h4>
+                            <span className="sub-meta">{topic.group_name || topic.category}</span>
                           </div>
-                        )}
-                        {phase.key === 'evidence' && result?.no_data_explainer && (
-                          <div className="stage-detail-block warning">
-                            <p>空结果解释：{prettyReasonCode(result.no_data_explainer.reason_code)}</p>
-                            <p>覆盖率：{Math.round(Number(result.no_data_explainer.coverage_ratio || 0) * 100)}%</p>
-                            <p>尝试平台：{(result.no_data_explainer.attempted_platforms || []).join('、') || '无'}</p>
-                            <p>建议补检：{(result.no_data_explainer.next_queries || []).slice(0, 3).join(' / ') || '无'}</p>
+                          <p className="stage-summary">{topic.summary}</p>
+                          <div className="focus-topic-meta">
+                            <span>{topic.source_name}</span>
+                            <span>{formatDateTime(topic.published_at)}</span>
+                            <span>score {topic.score.toFixed(1)}</span>
                           </div>
-                        )}
-                        {phase.key === 'verification' && result?.claim_analysis && (
-                          <div className="stage-detail-block">
-                            <p>主张结论：{String((result.claim_analysis as Record<string, unknown>).run_verdict || 'UNCERTAIN')}</p>
-                            <p>待复核数量：{Array.isArray((result.claim_analysis as Record<string, unknown>).review_queue) ? ((result.claim_analysis as Record<string, unknown>).review_queue as unknown[])?.length : 0}</p>
-                            <p>
-                              评论/水军检测：
-                              {String(
-                                (opinionRuntime?.status as string)
-                                || (((result.opinion_monitoring || {}) as Record<string, unknown>).status as string)
-                                || 'NOT_RUN'
+                          <div className="focus-topic-actions">
+                            {topic.url ? (
+                              <a href={topic.url} target="_blank" rel="noreferrer noopener" className="ghost-btn">
+                                打开原文
+                              </a>
+                            ) : (
+                              <span className="hint-text">当前无原始链接</span>
+                            )}
+                          </div>
+                        </article>
+                      ))}
+                    </section>
+                  ))}
+                </section>
+              </section>
+            </section>
+          )}
+
+          {activeSection === 'tasks' && (
+            <section className="task-shell">
+              <section className="task-hero panel-card">
+                <div>
+                  <div className="panel-head">
+                    <h3>任务管理</h3>
+                    <span>Mission Control</span>
+                  </div>
+                  <p className="stage-summary">把一次核验任务拆成可追踪、可人审、可交付的执行链路。</p>
+                </div>
+                <div className="brief-matrix">
+                  <div>
+                    <span>当前阶段</span>
+                    <strong>{currentPhase}</strong>
+                  </div>
+                  <div>
+                    <span>任务状态</span>
+                    <strong>{runOverview.runStatus}</strong>
+                  </div>
+                  <div>
+                    <span>运行耗时</span>
+                    <strong>{runOverview.duration}</strong>
+                  </div>
+                  <div>
+                    <span>待复核数量</span>
+                    <strong>{openReviewCount}</strong>
+                  </div>
+                </div>
+              </section>
+
+              <ReviewGateBanner gate={reviewGate} />
+
+              <section className="task-layout">
+                <div className="task-main-column">
+                  {showTimeline ? (
+                    <ProgramTimeline
+                      current={currentPhase}
+                      phases={phaseNodes}
+                      onSelect={(phase) => setCurrentPhase(phase)}
+                    />
+                  ) : (
+                    <article className="panel-card empty-state">
+                      <p className="stage-summary">阶段时间线将于预分析确认或收到流式输出后出现。</p>
+                    </article>
+                  )}
+
+                  <section className="stage-flow">
+                    {phaseNodes.map((phase) => {
+                      const rawLogs = phaseLogs[phase.key] || []
+                      const displayLogs =
+                        phase.key === 'evidence'
+                          ? buildEvidenceDisplayLogs(rawLogs)
+                          : rawLogs.slice(0, 120).reverse()
+                      return (
+                        <div key={phase.key} ref={(el) => { phaseRefs.current[phase.key] = el }}>
+                          <ProgramStageCard
+                            title={phase.title}
+                            status={phase.status}
+                            summary={phase.summary}
+                            actionHint={phase.actionHint}
+                            collapsible
+                            isOpen={openStages[phase.key]}
+                            onToggle={() => setOpenStages((prev) => ({ ...prev, [phase.key]: !prev[phase.key] }))}
+                          >
+                            {phase.key === 'preview' && preview && (
+                              <div className="stage-detail-block">
+                                <p>意图摘要：{preview.intent_summary}</p>
+                                <p>风险提示：{(preview.risk_notes || []).join('；') || '无'}</p>
+                                <p>来源计划：{previewPlatforms.join('、') || '待确认'}</p>
+                                {humanNotes && <p>人工补充：{humanNotes}</p>}
+                              </div>
+                            )}
+                            {phase.key === 'evidence' && result?.no_data_explainer && (
+                              <div className="stage-detail-block warning">
+                                <p>空结果解释：{prettyReasonCode(result.no_data_explainer.reason_code)}</p>
+                                <p>覆盖率：{Math.round(Number(result.no_data_explainer.coverage_ratio || 0) * 100)}%</p>
+                                <p>尝试平台：{(result.no_data_explainer.attempted_platforms || []).join('、') || '无'}</p>
+                                <p>建议补检：{(result.no_data_explainer.next_queries || []).slice(0, 3).join(' / ') || '无'}</p>
+                              </div>
+                            )}
+                            {phase.key === 'verification' && result?.claim_analysis && (
+                              <div className="stage-detail-block">
+                                <p>主张结论：{String((result.claim_analysis as Record<string, unknown>).run_verdict || 'UNCERTAIN')}</p>
+                                <p>待复核数量：{Array.isArray((result.claim_analysis as Record<string, unknown>).review_queue) ? ((result.claim_analysis as Record<string, unknown>).review_queue as unknown[])?.length : 0}</p>
+                                <p>
+                                  评论/水军检测：
+                                  {String(
+                                    (opinionRuntime?.status as string)
+                                    || (((result.opinion_monitoring || {}) as Record<string, unknown>).status as string)
+                                    || 'NOT_RUN'
+                                  )}
+                                  {' · 风险 '}
+                                  {String(
+                                    (opinionRuntime?.risk_level as string)
+                                    || (((result.opinion_monitoring || {}) as Record<string, unknown>).risk_level as string)
+                                    || 'unknown'
+                                  ).toUpperCase()}
+                                  {' · 可疑占比 '}
+                                  {Math.round(
+                                    Number(
+                                      opinionRuntime?.suspicious_ratio
+                                      ?? (((result.opinion_monitoring || {}) as Record<string, unknown>).suspicious_ratio as number)
+                                      ?? 0
+                                    ) * 100
+                                  )}%
+                                </p>
+                              </div>
+                            )}
+                            {phase.key === 'conclusion' && (
+                              <div className="stage-detail-block conclusion">
+                                <p className="conclusion-short">{shortConclusion(result)}</p>
+                                <p className="conclusion-long">{longConclusion(result, freshnessText)}</p>
+                                <div className="meta-row">
+                                  <span>截至时间：{freshness.as_of ? new Date(freshness.as_of).toLocaleString('zh-CN') : '--'}</span>
+                                  <span>新鲜度：{freshness.status}</span>
+                                </div>
+                              </div>
+                            )}
+                            <div className="stage-log-wrap">
+                              <p className="hint-text">阶段日志</p>
+                              {displayLogs.length ? (
+                                <ul className="stage-logs" ref={phase.key === 'evidence' ? evidenceLogRef : undefined}>
+                                  {displayLogs.map((log, idx) => {
+                                    const evidenceMeta = log.type === 'evidence_found' ? getEvidenceMeta(log.payload) : null
+                                    const evidenceDetail = evidenceMeta
+                                      ? [evidenceMeta.source, evidenceMeta.title || evidenceMeta.snippet]
+                                          .filter(Boolean)
+                                          .join(' · ')
+                                      : ''
+                                    const evidenceText = evidenceMeta
+                                      ? truncateText(evidenceDetail || evidenceMeta.url || '新证据')
+                                      : ''
+                                    return (
+                                      <li key={`${log.ts}-${idx}`}>
+                                        <span>{new Date(log.ts).toLocaleTimeString('zh-CN')}</span>
+                                        <div className="log-body">
+                                          <strong>{log.message}</strong>
+                                          {evidenceMeta && evidenceText && (
+                                            evidenceMeta.url ? (
+                                              <a
+                                                className="evidence-link"
+                                                href={evidenceMeta.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                              >
+                                                {evidenceText}
+                                              </a>
+                                            ) : (
+                                              <span className="evidence-link">{evidenceText}</span>
+                                            )
+                                          )}
+                                        </div>
+                                      </li>
+                                    )
+                                  })}
+                                </ul>
+                              ) : (
+                                <p className="empty-copy">暂无阶段日志。</p>
                               )}
-                              {' · 风险 '}
-                              {String(
-                                (opinionRuntime?.risk_level as string)
-                                || (((result.opinion_monitoring || {}) as Record<string, unknown>).risk_level as string)
-                                || 'unknown'
-                              ).toUpperCase()}
-                              {' · 可疑占比 '}
-                              {Math.round(
-                                Number(
-                                  opinionRuntime?.suspicious_ratio
-                                  ?? (((result.opinion_monitoring || {}) as Record<string, unknown>).suspicious_ratio as number)
-                                  ?? 0
-                                ) * 100
-                              )}%
-                            </p>
-                          </div>
-                        )}
-                        {phase.key === 'conclusion' && (
-                          <div className="stage-detail-block conclusion">
-                            <p className="conclusion-short">{shortConclusion(result)}</p>
-                            <p className="conclusion-long">{longConclusion(result, freshnessText)}</p>
-                            <div className="meta-row">
-                              <span>截至时间：{freshness.as_of ? new Date(freshness.as_of).toLocaleString('zh-CN') : '--'}</span>
-                              <span>新鲜度：{freshness.status}</span>
                             </div>
-                          </div>
-                        )}
-                        <div className="stage-log-wrap">
-                          <p className="hint-text">阶段日志</p>
-                          {displayLogs.length ? (
-                            <ul className="stage-logs" ref={phase.key === 'evidence' ? evidenceLogRef : undefined}>
-                              {displayLogs.map((log, idx) => {
-                                const evidenceMeta = log.type === 'evidence_found' ? getEvidenceMeta(log.payload) : null
-                                const evidenceDetail = evidenceMeta
-                                  ? [evidenceMeta.source, evidenceMeta.title || evidenceMeta.snippet]
-                                      .filter(Boolean)
-                                      .join(' · ')
-                                  : ''
-                                const evidenceText = evidenceMeta
-                                  ? truncateText(evidenceDetail || evidenceMeta.url || '新证据')
-                                  : ''
-                                return (
-                                  <li key={`${log.ts}-${idx}`}>
-                                    <span>{new Date(log.ts).toLocaleTimeString('zh-CN')}</span>
-                                    <div className="log-body">
-                                      <strong>{log.message}</strong>
-                                      {evidenceMeta && evidenceText && (
-                                        evidenceMeta.url ? (
-                                          <a
-                                            className="evidence-link"
-                                            href={evidenceMeta.url}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                          >
-                                            {evidenceText}
-                                          </a>
-                                        ) : (
-                                          <span className="evidence-link">{evidenceText}</span>
-                                        )
-                                      )}
-                                    </div>
-                                  </li>
-                                )
-                              })}
-                            </ul>
-                          ) : (
-                            <p className="empty-copy">暂无阶段日志。</p>
-                          )}
+                          </ProgramStageCard>
                         </div>
-                      </ProgramStageCard>
+                      )
+                    })}
+                  </section>
+                </div>
+
+                <aside className="task-side-column">
+                  <article className="panel-card pro-thinking-panel">
+                    <div className="panel-head">
+                      <h3>Pro 思考中</h3>
+                      <span>流式执行摘要</span>
                     </div>
-                  )
-                })}
+                    {thinkingFeed.length ? (
+                      <ul className="pro-thinking-list">
+                        {thinkingFeed.map((log, idx) => (
+                          <li key={`${log.ts}-${idx}`}>
+                            <span className="pro-thinking-phase">{phaseTitleMap.get(log.phase) || log.phase}</span>
+                            <div>
+                              <p>{log.message}</p>
+                              <small>{new Date(log.ts).toLocaleTimeString('zh-CN')}</small>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="empty-copy">等待流式输出…</p>
+                    )}
+                  </article>
+
+                  <article className="panel-card">
+                    <div className="panel-head">
+                      <h3>执行口径</h3>
+                      <span>Editorial Ops</span>
+                    </div>
+                    <ul className="list-plain compact">
+                      <li>先验证来源覆盖，再看冲突证据，不直接以情绪热度替代真实性。</li>
+                      <li>风险升高时优先进入人工复核，而不是直接生成对外口径。</li>
+                      <li>结论要能被 AI 引用，因此需要可验证、可复述、可追溯。</li>
+                    </ul>
+                  </article>
+                </aside>
               </section>
             </section>
           )}
 
           {activeSection === 'analysis' && (
-            <section className="advanced-wrap panel-card">
-              <div className="panel-head">
-                <h3>分析中心</h3>
-                <div className="head-inline">
-                  <DynamicMark />
-                  <button type="button" className="ghost-btn" onClick={() => setShowAdvanced((v) => !v)}>
-                    {showAdvanced ? '收起' : '展开'}
-                  </button>
+            <section className="analysis-shell">
+              <section className="analysis-hero panel-card">
+                <div>
+                  <div className="panel-head">
+                    <h3>分析中心</h3>
+                    <div className="head-inline">
+                      <DynamicMark />
+                      <button type="button" className="ghost-btn" onClick={() => setShowAdvanced((v) => !v)}>
+                        {showAdvanced ? '收起' : '展开'}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="stage-summary">把证据结构、主张冲突和舆情风险压缩成可以直接给编辑、审核和传播团队使用的分析视图。</p>
+                  <div className="analysis-ribbon">
+                    <span>编辑指引</span>
+                    <strong>
+                      {dashboardBrief.evidenceCount > 0
+                        ? `当前已有 ${dashboardBrief.evidenceCount} 条证据进入分析链路，优先检查冲突证据与时效缺口。`
+                        : '当前尚未形成有效证据链，建议先回到控制台发起核验。'}
+                    </strong>
+                  </div>
                 </div>
-              </div>
+                <div className="brief-matrix">
+                  <div>
+                    <span>主证据</span>
+                    <strong>{summaryBars[0]?.value ?? 0}</strong>
+                  </div>
+                  <div>
+                    <span>背景证据</span>
+                    <strong>{summaryBars[1]?.value ?? 0}</strong>
+                  </div>
+                  <div>
+                    <span>总有效证据</span>
+                    <strong>{summaryBars[2]?.value ?? 0}</strong>
+                  </div>
+                  <div>
+                    <span>结论倾向</span>
+                    <strong>{dashboardBrief.verdict}</strong>
+                  </div>
+                </div>
+              </section>
 
-              {showAdvanced ? (
-                <>
+              <section className="analysis-spotlight-grid">
+                <article className="panel-card signal-board">
+                  <div className="panel-head">
+                    <h3>分析信号板</h3>
+                    <span>Signal Board</span>
+                  </div>
+                  <div className="signal-list">
+                    <div className="signal-item">
+                      <span>主张倾向</span>
+                      <strong>{dashboardBrief.verdict}</strong>
+                      <p>用于快速判断当前能否进入发布与复核流程。</p>
+                    </div>
+                    <div className="signal-item">
+                      <span>舆情风险</span>
+                      <strong>{dashboardBrief.riskLevel}</strong>
+                      <p>结合可疑评论占比 {dashboardBrief.suspiciousPct}% 与真实评论占比 {dashboardBrief.realPct}% 评估扩散风险。</p>
+                    </div>
+                    <div className="signal-item">
+                      <span>时效性</span>
+                      <strong>{freshness.status}</strong>
+                      <p>{freshnessText}</p>
+                    </div>
+                  </div>
+                </article>
+
+                <article className="panel-card analysis-command-card">
+                  <div className="panel-head">
+                    <h3>分析任务口径</h3>
+                    <span>Analyst Brief</span>
+                  </div>
+                  <ul className="list-plain compact">
+                    <li>先确认是否存在权威来源缺失，再看情绪异常是否会误导结论。</li>
+                    <li>证据链不闭环时，不要把“热点”包装成“事实”。</li>
+                    <li>只有可追溯、可复述、可引用的结论才适合进入 GEO 输出。</li>
+                  </ul>
+                </article>
+              </section>
+
+              <section className="analysis-layout">
+                <article className="panel-card analysis-explainer">
+                    <div className="panel-head">
+                      <h3>分析提示</h3>
+                      <span>How to Read</span>
+                    </div>
+                    <ul className="list-plain compact">
+                      <li>先看证据结构是否失衡，再判断结论是否稳固。</li>
+                      <li>如果舆情风险高但证据弱，应优先延迟对外扩散。</li>
+                      <li>如果结论明确且证据链完整，可以转入 GEO 发布生成。</li>
+                    </ul>
+                  </article>
+
+                <section className="advanced-wrap panel-card">
+                  <article className="sub-card analysis-overview-card">
+                    <div className="sub-head">
+                      <h4>分析概览</h4>
+                      <span className="sub-meta">Snapshot</span>
+                    </div>
+                    <div className="brief-matrix analysis-brief-matrix">
+                      <div>
+                        <span>流事件</span>
+                        <strong>{runOverview.eventCount}</strong>
+                      </div>
+                      <div>
+                        <span>运行耗时</span>
+                        <strong>{runOverview.duration}</strong>
+                      </div>
+                      <div>
+                        <span>当前阶段</span>
+                        <strong>{currentPhase}</strong>
+                      </div>
+                      <div>
+                        <span>复核门禁</span>
+                        <strong>{reviewGate.required ? reviewGate.priority.toUpperCase() : 'NONE'}</strong>
+                      </div>
+                    </div>
+                  </article>
+
                   <article className="sub-card compact-metrics">
                     <h4>证据结构快照</h4>
                     {summaryBars.map((row) => (
@@ -1303,33 +1810,94 @@ function App() {
                       </div>
                     ))}
                   </article>
-                  <AdvancedForensicsPanel result={result} />
-                </>
-              ) : (
-                <p className="empty-copy">当前为简洁模式。点击“展开”查看证据卡、主张追踪、传播异常与可视化。</p>
-              )}
+                  {showAdvanced ? null : (
+                    <article className="sub-card collapsed-notice">
+                      <div className="sub-head">
+                        <h4>简洁模式</h4>
+                        <span className="sub-meta">Lite</span>
+                      </div>
+                      <p className="empty-copy">当前展示为编辑可读摘要。点击右上角“展开”后，将显示更完整的证据卡、主张追踪和异常可视化。</p>
+                    </article>
+                  )}
+                  {showAdvanced ? <AdvancedForensicsPanel result={result} /> : null}
+                </section>
+              </section>
             </section>
           )}
 
           {activeSection === 'conclusions' && (
-            <section className="panel-card">
-              <div className="panel-head">
-                <h3>结论管理</h3>
-                <span>发布与复核</span>
-              </div>
+            <section className="conclusion-shell">
+              <section className="conclusion-hero panel-card">
+                <div>
+                  <div className="panel-head">
+                    <h3>结论管理</h3>
+                    <span>发布与复核</span>
+                  </div>
+                  <p className="conclusion-short">{shortConclusion(result)}</p>
+                  <p className="conclusion-long">{longConclusion(result, freshnessText)}</p>
+                </div>
+                <div className="brief-matrix">
+                  <div>
+                    <span>结论倾向</span>
+                    <strong>{dashboardBrief.verdict}</strong>
+                  </div>
+                  <div>
+                    <span>风险等级</span>
+                    <strong>{dashboardBrief.riskLevel}</strong>
+                  </div>
+                  <div>
+                    <span>时效状态</span>
+                    <strong>{freshness.status}</strong>
+                  </div>
+                  <div>
+                    <span>人工复核</span>
+                    <strong>{reviewGate.required ? reviewGate.priority.toUpperCase() : 'NONE'}</strong>
+                  </div>
+                </div>
+              </section>
+
+              <section className="conclusion-spotlight-grid">
+                <article className="panel-card conclusion-spotlight">
+                  <div className="panel-head">
+                    <h3>对外发布判断</h3>
+                    <span>Release Desk</span>
+                  </div>
+                  <div className="signal-list">
+                    <div className="signal-item">
+                      <span>结论可信度</span>
+                      <strong>{dashboardBrief.verdict}</strong>
+                      <p>{shortConclusion(result)}</p>
+                    </div>
+                    <div className="signal-item">
+                      <span>风险处置</span>
+                      <strong>{reviewGate.required ? '先复核' : '可发布'}</strong>
+                      <p>{reviewGate.required ? reviewGate.reasons.join('；') || '存在待判断项。' : '当前无强制人工复核门槛。'}</p>
+                    </div>
+                    <div className="signal-item">
+                      <span>传播适配</span>
+                      <strong>{geoReport ? 'GEO READY' : 'PENDING'}</strong>
+                      <p>面向 AI 分发链路的结构化报告{geoReport ? '已生成。' : '尚未生成。'}</p>
+                    </div>
+                  </div>
+                </article>
+
+                <article className="panel-card conclusion-decision-board">
+                  <div className="panel-head">
+                    <h3>发布前门禁</h3>
+                    <span>Go / Hold</span>
+                  </div>
+                  <div className="decision-grid">
+                    {publishReadiness.map((item) => (
+                      <div key={item.label} className={cn('decision-item', `tone-${item.tone}`)}>
+                        <span>{item.label}</span>
+                        <strong>{item.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              </section>
+
               <ReviewGateBanner gate={reviewGate} />
-              <article className="panel-card">
-                <div className="panel-head">
-                  <h4>结论摘要</h4>
-                  <span>可信度与时效</span>
-                </div>
-                <p className="conclusion-short">{shortConclusion(result)}</p>
-                <p className="conclusion-long">{longConclusion(result, freshnessText)}</p>
-                <div className="meta-row">
-                  <span>截至时间：{freshness.as_of ? new Date(freshness.as_of).toLocaleString('zh-CN') : '--'}</span>
-                  <span>新鲜度：{freshness.status}</span>
-                </div>
-              </article>
               {renderPublishPanel('full')}
             </section>
           )}

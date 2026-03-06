@@ -92,6 +92,34 @@ export interface MultiplatformSearchResponse {
   platform_count: number
 }
 
+export interface HotFocusItem {
+  id: string
+  title: string
+  summary: string
+  url: string
+  published_at: string
+  category: string
+  source_name: string
+  source_id: string
+  group_name: string
+  score: number
+}
+
+export interface HotFocusSection {
+  category: string
+  items: HotFocusItem[]
+}
+
+export interface HotFocusResponse {
+  success: boolean
+  updated_at: string
+  source_count: number
+  candidate_count: number
+  summary_items: HotFocusItem[]
+  detail_items: HotFocusItem[]
+  sections: HotFocusSection[]
+}
+
 export interface AggregateSummary {
   total_posts: number
   platform_count: number
@@ -621,6 +649,26 @@ export async function searchMultiplatform(
       signal,
     },
     '跨平台搜索失败'
+  )
+}
+
+export async function fetchHotFocus(
+  refresh = false,
+  signal?: AbortSignal
+): Promise<HotFocusResponse> {
+  return requestJson<HotFocusResponse>(
+    '/multiplatform/hot-focus',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        refresh,
+      }),
+      signal,
+    },
+    '今日传播重点获取失败'
   )
 }
 

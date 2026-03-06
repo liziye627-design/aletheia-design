@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import random
 from typing import Any, Dict, List
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import feedparser
 import httpx
@@ -55,6 +55,12 @@ class RssPoolCrawler(BaseCrawler):
         )
         self.per_source_limit = max(
             3, int(getattr(settings, "RSS_POOL_ITEMS_PER_SOURCE", 12))
+        )
+        self.hot_max_age_hours = max(
+            1, int(getattr(settings, "RSS_POOL_HOT_MAX_AGE_HOURS", 168))
+        )
+        self.hot_per_source_cap = max(
+            1, int(getattr(settings, "RSS_POOL_HOT_PER_SOURCE_CAP", 2))
         )
         self._trust_env_candidates: List[bool] = []
         trust_env_only = bool(getattr(settings, "HTTPX_TRUST_ENV_ONLY", True))
@@ -127,6 +133,74 @@ class RssPoolCrawler(BaseCrawler):
             return dt.isoformat()
         except Exception:
             return datetime.utcnow().isoformat()
+
+    def _to_datetime(self, value: str | None) -> datetime:
+        raw = str(value or "").strip()
+        if not raw:
+            return datetime.now(timezone.utc)
+        try:
+            from dateutil import parser
+
+            dt = parser.parse(raw)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except Exception:
+            return datetime.now(timezone.utc)
+
+    def _rank_hot_items(self, items: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+        if not items or limit <= 0:
+            return []
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=self.hot_max_age_hours)
+        fresh: List[Dict[str, Any]] = []
+        stale: List[Dict[str, Any]] = []
+        for item in items:
+            published_at = self._to_datetime(
+                str(
+                    item.get("published_at")
+                    or ((item.get("metadata") or {}) if isinstance(item.get("metadata"), dict) else {}).get("timestamp")
+                    or item.get("created_at")
+                    or ""
+                )
+            )
+            bucket = fresh if published_at >= cutoff else stale
+            cloned = dict(item)
+            cloned["_published_dt"] = published_at
+            bucket.append(cloned)
+
+        def _sort_key(row: Dict[str, Any]) -> tuple[datetime, float]:
+            meta = row.get("metadata") or {}
+            priority = int((meta.get("priority") if isinstance(meta, dict) else 5) or 5)
+            priority_boost = float(max(0, 10 - priority))
+            return (row.get("_published_dt") or datetime.min.replace(tzinfo=timezone.utc), priority_boost)
+
+        ordered = sorted(fresh, key=_sort_key, reverse=True)
+        if not ordered:
+            ordered = sorted(stale, key=_sort_key, reverse=True)
+        elif len(ordered) < limit:
+            ordered.extend(sorted(stale, key=_sort_key, reverse=True))
+
+        picked: List[Dict[str, Any]] = []
+        per_source_seen: Dict[str, int] = {}
+        overflow: List[Dict[str, Any]] = []
+        for row in ordered:
+            meta = row.get("metadata") or {}
+            source_id = str((meta.get("source_id") if isinstance(meta, dict) else "") or "rss_pool")
+            if per_source_seen.get(source_id, 0) < self.hot_per_source_cap:
+                per_source_seen[source_id] = per_source_seen.get(source_id, 0) + 1
+                picked.append(row)
+            else:
+                overflow.append(row)
+            if len(picked) >= limit:
+                break
+        if len(picked) < limit:
+            for row in overflow:
+                picked.append(row)
+                if len(picked) >= limit:
+                    break
+        for row in picked:
+            row.pop("_published_dt", None)
+        return picked[:limit]
 
     def _select_sources(self) -> List[Dict[str, Any]]:
         sources = [
@@ -242,8 +316,6 @@ class RssPoolCrawler(BaseCrawler):
 
         results = await asyncio.gather(*[_worker(src) for src in selected], return_exceptions=True)
         for result in results:
-            if len(items) >= limit:
-                break
             if isinstance(result, Exception):
                 reason_stats[type(result).__name__] = int(reason_stats.get(type(result).__name__, 0)) + 1
                 continue
@@ -256,8 +328,6 @@ class RssPoolCrawler(BaseCrawler):
                 logger.warning(f"rss_pool: fetch failed {url}: {reason_code}")
                 continue
             for entry in entries[: self.per_source_limit]:
-                if len(items) >= limit:
-                    break
                 title = str(entry.get("title", "") or "").strip()
                 summary = str(entry.get("summary", "") or "").strip()
                 link = str(entry.get("link", "") or "").strip()
@@ -316,7 +386,8 @@ class RssPoolCrawler(BaseCrawler):
                 f"rss_pool: summary selected={len(selected)} items={len(items)} "
                 f"reasons={reason_stats} trust_env={trust_env_stats}"
             )
-        return items[:limit]
+        ranked = self._rank_hot_items(items, limit)
+        return ranked[:limit]
 
     async def search(self, keyword: str, limit: int = 20) -> List[Dict[str, Any]]:
         """
