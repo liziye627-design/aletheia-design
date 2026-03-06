@@ -113,6 +113,7 @@ export interface HotFocusSection {
 export interface HotFocusResponse {
   success: boolean
   updated_at: string
+  expires_at?: string
   source_count: number
   candidate_count: number
   summary_items: HotFocusItem[]

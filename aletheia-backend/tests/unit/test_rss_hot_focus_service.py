@@ -105,3 +105,25 @@ def test_build_payload_deduplicates_same_url():
 
     assert payload["candidate_count"] == 1
     assert len(payload["detail_items"]) == 1
+
+
+def test_snapshot_file_roundtrip(tmp_path):
+    service = RssHotFocusService()
+    service._snapshot_path = str(tmp_path / "hot_focus_snapshot.json")
+    payload = service._build_payload(
+        [
+            _item(
+                "file-1",
+                title="文件快照条目",
+                published_at="2026-03-06T10:00:00+00:00",
+                source_id="src-a",
+                source_name="A",
+                category="国际",
+                url="https://example.com/file-1",
+            )
+        ]
+    )
+    service._save_snapshot_to_disk(payload)
+    loaded = service._load_snapshot_from_disk()
+    assert loaded is not None
+    assert loaded["summary_items"][0]["title"] == "文件快照条目"

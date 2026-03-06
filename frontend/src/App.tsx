@@ -297,6 +297,7 @@ function App() {
   const [hotFocusLoading, setHotFocusLoading] = useState(false)
   const [hotFocusError, setHotFocusError] = useState('')
   const [hotFocusUpdatedAt, setHotFocusUpdatedAt] = useState('')
+  const [hotFocusExpiresAt, setHotFocusExpiresAt] = useState('')
   const [hotFocusSourceCount, setHotFocusSourceCount] = useState(0)
   const [hotFocusCandidateCount, setHotFocusCandidateCount] = useState(0)
   const [replayResult, setReplayResult] = useState<InvestigationRunResult | null>(null)
@@ -383,6 +384,7 @@ function App() {
           setHotFocusTopics(mergedRows)
           setHotFocusSections(Array.isArray(resp.sections) ? resp.sections : [])
           setHotFocusUpdatedAt(resp.updated_at || new Date().toISOString())
+          setHotFocusExpiresAt(resp.expires_at || '')
           setHotFocusSourceCount(Number(resp.source_count || 0))
           setHotFocusCandidateCount(Number(resp.candidate_count || 0))
         }
@@ -424,8 +426,8 @@ function App() {
 
   useEffect(() => {
     const startId = window.setTimeout(() => {
-      loadHotFocus(false, 6000)
-    }, 15000)
+      loadHotFocus(false, 5000)
+    }, 300)
     return () => {
       window.clearTimeout(startId)
       hotFocusRequestRef.current?.abort()
@@ -1190,7 +1192,10 @@ function App() {
                       </div>
                     </div>
                     <p className="mission-summary">
-                      基于 RSS 热点源提炼今日值得优先核验与传播管理的议题。{hotFocusUpdatedAt ? `最近更新：${formatDateTime(hotFocusUpdatedAt)}` : '当前使用本地观察口径。'}
+                      基于 RSS 热点源提炼今日值得优先核验与传播管理的议题。
+                      {hotFocusUpdatedAt
+                        ? `最近更新：${formatDateTime(hotFocusUpdatedAt)}${hotFocusExpiresAt ? ` · 下次刷新：${formatDateTime(hotFocusExpiresAt)}` : ''}`
+                        : '当前使用本地观察口径。'}
                     </p>
                     <div className="value-list">
                       {focusSummaryCards.map((item) => (

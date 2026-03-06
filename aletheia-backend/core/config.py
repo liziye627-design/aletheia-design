@@ -251,7 +251,8 @@ class Settings(BaseSettings):
     RSS_HOT_FOCUS_SUMMARY_LIMIT: int = 3
     RSS_HOT_FOCUS_DETAIL_LIMIT: int = 12
     RSS_HOT_FOCUS_MAX_AGE_HOURS: int = 72
-    RSS_HOT_FOCUS_CACHE_TTL_SEC: int = 3600
+    RSS_HOT_FOCUS_CACHE_TTL_SEC: int = 43200
+    RSS_HOT_FOCUS_SNAPSHOT_PATH: str = "runtime/data/hot_focus_snapshot.json"
     RULES_CONFIG_PATH: str = "config/rules.yaml"
     RULES_CONFIG_REFRESH_SEC: float = 5.0
     RULES_CONFIG_ENABLED: bool = True

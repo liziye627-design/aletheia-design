@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -113,9 +115,31 @@ class RssHotFocusService:
     def __init__(self):
         self._cache_payload: Optional[Dict[str, Any]] = None
         self._cache_at: Optional[datetime] = None
+        configured_path = str(
+            getattr(settings, "RSS_HOT_FOCUS_SNAPSHOT_PATH", "runtime/data/hot_focus_snapshot.json")
+        )
+        self._snapshot_path = self._resolve_snapshot_path(configured_path)
+
+    def _resolve_snapshot_path(self, configured_path: str) -> str:
+        raw = str(configured_path or "").strip()
+        if not raw:
+            return ""
+        if os.path.isabs(raw):
+            return raw
+        backend_root = os.path.dirname(os.path.dirname(__file__))
+        project_root = os.path.dirname(backend_root)
+        return os.path.abspath(os.path.join(project_root, raw))
 
     async def build_snapshot(self, *, refresh: bool = False) -> Dict[str, Any]:
         ttl_sec = max(60, int(getattr(settings, "RSS_HOT_FOCUS_CACHE_TTL_SEC", 3600)))
+        if not refresh:
+            disk_payload = self._load_snapshot_from_disk()
+            if disk_payload is not None:
+                disk_updated_at = _parse_dt(disk_payload.get("updated_at"))
+                if (_now_utc() - disk_updated_at).total_seconds() < ttl_sec:
+                    self._cache_payload = disk_payload
+                    self._cache_at = disk_updated_at
+                    return disk_payload
         if (
             not refresh
             and self._cache_payload is not None
@@ -140,7 +164,32 @@ class RssHotFocusService:
         payload = self._build_payload(candidates)
         self._cache_payload = payload
         self._cache_at = _now_utc()
+        self._save_snapshot_to_disk(payload)
         return payload
+
+    def _load_snapshot_from_disk(self) -> Optional[Dict[str, Any]]:
+        path = self._snapshot_path
+        if not path or not os.path.exists(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                payload = json.load(fh)
+            return payload if isinstance(payload, dict) else None
+        except Exception:
+            return None
+
+    def _save_snapshot_to_disk(self, payload: Dict[str, Any]) -> None:
+        path = self._snapshot_path
+        if not path:
+            return
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            tmp_path = f"{path}.tmp"
+            with open(tmp_path, "w", encoding="utf-8") as fh:
+                json.dump(payload, fh, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, path)
+        except Exception:
+            return
 
     def _build_payload(self, candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
         now = _now_utc()
@@ -188,6 +237,7 @@ class RssHotFocusService:
 
         return {
             "updated_at": now.isoformat(),
+            "expires_at": (now + timedelta(seconds=max(60, int(getattr(settings, "RSS_HOT_FOCUS_CACHE_TTL_SEC", 3600))))).isoformat(),
             "source_count": len({str((row.get("metadata") or {}).get("source_id") or "") for row in deduped}),
             "candidate_count": len(deduped),
             "summary_items": [self._serialize_item(row) for row in summary_items],
