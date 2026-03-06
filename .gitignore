@@ -27,6 +27,9 @@
 **/state/
 **/tmp/
 **/data/
+**/.hypothesis/
+**/test-results/
+**/playwright-report/
 
 # OS/IDE
 .DS_Store
