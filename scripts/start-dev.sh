@@ -148,13 +148,9 @@ cd "$PROJECT_ROOT/aletheia-backend"
 # 激活虚拟环境
 source venv/bin/activate
 
-# 启动后端（后台运行）
-nohup python3 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > "$BACKEND_LOG_FILE" 2>&1 &
-BACKEND_PID=$!
-echo $BACKEND_PID > "$BACKEND_PID_FILE"
-
-echo -e "${GREEN}✅ 后端服务已启动 (PID: $BACKEND_PID)${NC}"
-echo -e "${CYAN}   日志文件: $BACKEND_LOG_FILE${NC}"
+# 启动后端（后台运行，使用 setsid 防止当前 shell 退出时被级联终止）
+setsid python3 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > "$BACKEND_LOG_FILE" 2>&1 < /dev/null &
+BACKEND_LAUNCH_PID=$!
 
 # =====================================================
 # 5. 等待后端就绪
@@ -186,6 +182,16 @@ if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
     fi
     exit 1
 fi
+
+# 解析实际监听 PID（uvicorn --reload 会派生子进程）
+BACKEND_PID=$(lsof -t -iTCP:8000 -sTCP:LISTEN 2>/dev/null | head -n 1)
+if [ -z "$BACKEND_PID" ]; then
+    BACKEND_PID=$BACKEND_LAUNCH_PID
+fi
+echo $BACKEND_PID > "$BACKEND_PID_FILE"
+
+echo -e "${GREEN}✅ 后端服务已启动 (PID: $BACKEND_PID)${NC}"
+echo -e "${CYAN}   日志文件: $BACKEND_LOG_FILE${NC}"
 
 echo ""
 

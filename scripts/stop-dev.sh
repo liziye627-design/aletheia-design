@@ -73,6 +73,16 @@ else
     echo -e "${YELLOW}ℹ️  未找到后端PID文件${NC}"
 fi
 
+# 兜底：按端口清理后端监听进程（兼容 uvicorn --reload 的父子进程）
+BACKEND_PORT_PIDS=$(lsof -t -iTCP:8000 -sTCP:LISTEN 2>/dev/null || true)
+if [ -n "$BACKEND_PORT_PIDS" ]; then
+    echo -e "${YELLOW}🧹 清理 8000 端口残留进程: $BACKEND_PORT_PIDS${NC}"
+    kill $BACKEND_PORT_PIDS 2>/dev/null || true
+    sleep 1
+    BACKEND_PORT_PIDS2=$(lsof -t -iTCP:8000 -sTCP:LISTEN 2>/dev/null || true)
+    [ -n "$BACKEND_PORT_PIDS2" ] && kill -9 $BACKEND_PORT_PIDS2 2>/dev/null || true
+fi
+
 # =====================================================
 # 停止前端
 # =====================================================
