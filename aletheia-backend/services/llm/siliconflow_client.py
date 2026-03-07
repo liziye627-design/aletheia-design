@@ -295,7 +295,8 @@ class SiliconFlowClient:
             platform_summary.append(f"摘要: {summary.get('summary', '')}")
             platform_summary.append(f"风险: {', '.join(summary.get('risk_flags', []))}")
 
-        user_prompt = f"【关键词】{keyword}\n\n【各平台分析结果】\n{'\n'.join(platform_summary)}\n\n请综合以上信息给出整体判断，输出JSON格式。"
+        platform_summary_text = '\n'.join(platform_summary)
+        user_prompt = f"【关键词】{keyword}\n\n【各平台分析结果】\n{platform_summary_text}\n\n请综合以上信息给出整体判断，输出JSON格式。"
 
         try:
             response = await self._chat_with_fallback(
